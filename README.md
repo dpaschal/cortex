@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://buymeacoffee.com/dpaschal">
-    <img src="https://img.shields.io/badge/❤️🎆_THANKS!_🎆❤️-Buy_Me_A_Coffee-ff0000?style=for-the-badge&logo=buy-me-a-coffee&logoColor=white" alt="Buy Me A Coffee" height="50">
+    <img src="https://img.shields.io/badge/❤️🎆_THANKS!_🎆❤️-Support_This_Project-ff0000?style=for-the-badge" alt="Thanks!" height="40">
   </a>
 </p>
 
@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://buymeacoffee.com/dpaschal">
-    <img src="https://img.buymeacoffee.com/button-api/?text=Fund Claude Code Credits&emoji=🤖&slug=dpaschal&button_colour=FF0000&font_colour=ffffff&font_family=Cookie&outline_colour=ffffff&coffee_colour=FFDD00" alt="Support Drew">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-red.png" alt="Buy Me A Coffee" height="50">
   </a>
 </p>
 
