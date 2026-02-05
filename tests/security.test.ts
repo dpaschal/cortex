@@ -1,26 +1,36 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { AuthManager, AuthConfig, AuthToken } from '../src/security/auth';
 import { Logger } from 'winston';
+import * as fs from 'fs/promises';
+
+// Mock fs/promises module
+vi.mock('fs/promises');
 
 // Create a mock logger for testing
 const createMockLogger = (): Logger => ({
-  info: () => {},
-  warn: () => {},
-  error: () => {},
-  debug: () => {},
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  debug: vi.fn(),
 } as unknown as Logger);
 
-describe('AuthManager Token Tests', () => {
+describe('AuthManager', () => {
   let authManager: AuthManager;
   const testSecret = 'test-cluster-secret-for-testing';
+  const testCertsDir = '/tmp/test-certs';
 
   beforeEach(() => {
+    vi.clearAllMocks();
     const config: AuthConfig = {
       logger: createMockLogger(),
-      certsDir: '/tmp/test-certs',
+      certsDir: testCertsDir,
       clusterSecret: testSecret,
     };
     authManager = new AuthManager(config);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('Token Generation', () => {
@@ -171,6 +181,165 @@ describe('AuthManager Token Tests', () => {
 
       expect(result.valid).toBe(false);
       expect(result.reason).toBe('Invalid signature');
+    });
+  });
+
+  describe('Certificate Generation', () => {
+    it('should generate CA certificate', async () => {
+      // Mock fs operations for CA generation
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const result = await authManager.generateCA();
+
+      // Verify cert and key are returned as Buffers
+      expect(result.cert).toBeInstanceOf(Buffer);
+      expect(result.key).toBeInstanceOf(Buffer);
+      expect(result.cert.length).toBeGreaterThan(0);
+      expect(result.key.length).toBeGreaterThan(0);
+
+      // Verify directory was created
+      expect(fs.mkdir).toHaveBeenCalledWith(
+        `${testCertsDir}/ca`,
+        { recursive: true }
+      );
+
+      // Verify files were written
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        `${testCertsDir}/ca/ca.crt`,
+        expect.any(Buffer)
+      );
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        `${testCertsDir}/ca/ca.key`,
+        expect.any(Buffer),
+        { mode: 0o600 }
+      );
+    });
+
+    it('should generate node certificate', async () => {
+      // Mock CA files exist
+      const mockCaCert = Buffer.from('mock-ca-cert');
+      const mockCaKey = Buffer.from('mock-ca-key');
+
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        const pathStr = path.toString();
+        if (pathStr.endsWith('ca.crt')) return mockCaCert;
+        if (pathStr.endsWith('ca.key')) return mockCaKey;
+        throw new Error(`Unexpected path: ${pathStr}`);
+      });
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      const nodeId = 'test-node-1';
+      const hostname = 'test-host';
+      const ips = ['192.168.1.1', '10.0.0.1'];
+
+      const result = await authManager.generateNodeCertificate(nodeId, hostname, ips);
+
+      // Verify NodeCredentials structure
+      expect(result.nodeId).toBe(nodeId);
+      expect(result.certificate).toBeInstanceOf(Buffer);
+      expect(result.privateKey).toBeInstanceOf(Buffer);
+      expect(result.caCertificate).toEqual(mockCaCert);
+
+      // Verify node directory was created
+      expect(fs.mkdir).toHaveBeenCalledWith(
+        `${testCertsDir}/nodes/${nodeId}`,
+        { recursive: true }
+      );
+
+      // Verify node cert and key were written
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        `${testCertsDir}/nodes/${nodeId}/node.crt`,
+        expect.any(Buffer)
+      );
+      expect(fs.writeFile).toHaveBeenCalledWith(
+        `${testCertsDir}/nodes/${nodeId}/node.key`,
+        expect.any(Buffer),
+        { mode: 0o600 }
+      );
+    });
+
+    it('should load existing credentials from disk', async () => {
+      const nodeId = 'existing-node';
+      const mockCert = Buffer.from('mock-node-cert');
+      const mockKey = Buffer.from('mock-node-key');
+      const mockCaCert = Buffer.from('mock-ca-cert');
+
+      vi.mocked(fs.readFile).mockImplementation(async (path) => {
+        const pathStr = path.toString();
+        if (pathStr.endsWith('node.crt')) return mockCert;
+        if (pathStr.endsWith('node.key')) return mockKey;
+        if (pathStr.endsWith('ca.crt')) return mockCaCert;
+        throw new Error(`Unexpected path: ${pathStr}`);
+      });
+
+      const result = await authManager.loadNodeCredentials(nodeId);
+
+      expect(result).not.toBeNull();
+      expect(result!.nodeId).toBe(nodeId);
+      expect(result!.certificate).toEqual(mockCert);
+      expect(result!.privateKey).toEqual(mockKey);
+      expect(result!.caCertificate).toEqual(mockCaCert);
+
+      // Verify correct paths were read
+      expect(fs.readFile).toHaveBeenCalledWith(`${testCertsDir}/nodes/${nodeId}/node.crt`);
+      expect(fs.readFile).toHaveBeenCalledWith(`${testCertsDir}/nodes/${nodeId}/node.key`);
+      expect(fs.readFile).toHaveBeenCalledWith(`${testCertsDir}/ca/ca.crt`);
+    });
+
+    it('should create credentials directory if missing', async () => {
+      // This test verifies mkdir is called with recursive: true
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await authManager.generateCA();
+
+      // Verify mkdir was called with recursive option to create nested directories
+      expect(fs.mkdir).toHaveBeenCalledWith(
+        expect.stringContaining('ca'),
+        { recursive: true }
+      );
+    });
+  });
+
+  describe('Peer Verification', () => {
+    it('should verify valid peer certificate', () => {
+      // Create a certificate buffer that includes the expected nodeId
+      const nodeId = 'verified-node';
+      const certContent = JSON.stringify({
+        type: 'END_ENTITY',
+        cn: `node:${nodeId}:hostname`,
+        notBefore: new Date().toISOString(),
+        notAfter: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      const cert = Buffer.from(certContent);
+
+      // Verify without expectedNodeId
+      const resultWithoutExpected = authManager.verifyPeerCertificate(cert);
+      expect(resultWithoutExpected).toBe(true);
+
+      // Verify with matching expectedNodeId
+      const resultWithExpected = authManager.verifyPeerCertificate(cert, nodeId);
+      expect(resultWithExpected).toBe(true);
+    });
+
+    it('should reject certificate with wrong nodeId', () => {
+      // Create a certificate with one nodeId
+      const actualNodeId = 'actual-node';
+      const certContent = JSON.stringify({
+        type: 'END_ENTITY',
+        cn: `node:${actualNodeId}:hostname`,
+        notBefore: new Date().toISOString(),
+        notAfter: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
+      });
+      const cert = Buffer.from(certContent);
+
+      // Try to verify with a different expectedNodeId
+      const wrongNodeId = 'wrong-node';
+      const result = authManager.verifyPeerCertificate(cert, wrongNodeId);
+
+      expect(result).toBe(false);
     });
   });
 });
