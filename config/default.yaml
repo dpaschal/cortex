@@ -36,10 +36,11 @@ network:
 
 raft:
   # Election timeout range (randomized within this range)
-  electionTimeoutMinMs: 1500
-  electionTimeoutMaxMs: 3000
+  # Wide range to prevent split votes between nodes
+  electionTimeoutMinMs: 2000
+  electionTimeoutMaxMs: 5000
 
-  # Heartbeat interval
+  # Heartbeat interval (must be much less than election timeout)
   heartbeatIntervalMs: 500
 
   # Maximum log entries per AppendEntries RPC
@@ -130,10 +131,6 @@ mcp:
   serverVersion: "0.1.0"
 
 # Initial seed nodes for joining an existing cluster
-# Leave empty to start a new cluster
-seeds: []
-
-# Example seed configuration:
-# seeds:
-#   - address: 100.104.78.123:50051  # rog2
-#   - address: 100.85.203.53:50051   # terminus
+seeds:
+  - address: 100.104.78.123:50051  # rog2
+  - address: 100.120.202.76:50051  # terminus-1
