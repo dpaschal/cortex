@@ -14,7 +14,7 @@ HEALTH_CHECK_INTERVAL=2
 NODES=(
     "htnas02:100.103.240.34:worker"
     "forge:100.94.211.117:leader-eligible"
-    "terminus-1:100.120.202.76:leader-eligible"
+    "terminus:100.120.202.76:leader-eligible"
     "rog2:100.104.78.123:leader-eligible"
 )
 
