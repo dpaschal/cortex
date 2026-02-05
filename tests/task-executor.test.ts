@@ -613,7 +613,7 @@ describe('TaskExecutor', () => {
   });
 
   describe('Subagent Tasks', () => {
-    it('should return placeholder error for subagent tasks', async () => {
+    it('should return error when API key not configured', async () => {
       const executor = new TaskExecutor({ logger: mockLogger });
       const result = await executor.execute({
         taskId: 'subagent-task',
@@ -625,18 +625,13 @@ describe('TaskExecutor', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('Subagent execution requires Claude API integration');
+      expect(result.error).toBe('Subagent executor not configured (missing ANTHROPIC_API_KEY)');
     });
 
-    it('should emit status output for subagent tasks', async () => {
+    it('should log subagent task without API key', async () => {
       const executor = new TaskExecutor({ logger: mockLogger });
 
-      const outputs: Array<{ taskId: string; output: TaskOutput }> = [];
-      executor.on('output', (taskId: string, output: TaskOutput) => {
-        outputs.push({ taskId, output });
-      });
-
-      await executor.execute({
+      const result = await executor.execute({
         taskId: 'subagent-task',
         type: 'subagent',
         subagent: {
@@ -644,12 +639,9 @@ describe('TaskExecutor', () => {
         },
       });
 
-      expect(outputs).toHaveLength(1);
-      expect(outputs[0].output.type).toBe('status');
-
-      const statusData = JSON.parse(outputs[0].output.data.toString());
-      expect(statusData.type).toBe('subagent_pending');
-      expect(statusData.spec.prompt).toBe('Test prompt');
+      expect(result.success).toBe(false);
+      expect(result.taskId).toBe('subagent-task');
+      expect(result.exitCode).toBe(-1);
     });
   });
 });
