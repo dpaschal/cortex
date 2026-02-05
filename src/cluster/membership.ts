@@ -213,12 +213,29 @@ export class MembershipManager extends EventEmitter {
     peers: NodeInfo[];
   }> {
     if (!this.config.raft.isLeader()) {
-      // Redirect to leader
+      // Redirect to leader - try to get fresh leader address
+      let leaderAddr = this.leaderAddress || '';
+
+      // Try to get leader info from Raft state
+      const leaderId = this.config.raft.getLeaderId();
+      if (leaderId && leaderId !== this.config.nodeId) {
+        const leaderNode = this.nodes.get(leaderId);
+        if (leaderNode) {
+          leaderAddr = `${leaderNode.tailscaleIp}:${leaderNode.grpcPort}`;
+        }
+      }
+
+      this.config.logger.debug('Redirecting join request to leader', {
+        leaderId,
+        leaderAddress: leaderAddr,
+        requestingNode: node.nodeId,
+      });
+
       return {
         approved: false,
         pendingApproval: false,
         clusterId: '',
-        leaderAddress: this.leaderAddress || '',
+        leaderAddress: leaderAddr,
         peers: [],
       };
     }

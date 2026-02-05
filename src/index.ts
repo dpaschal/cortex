@@ -664,13 +664,19 @@ export class ClaudeCluster extends EventEmitter {
     // Collect all possible addresses to try
     const addresses: Array<{ address: string; source: string }> = [];
 
+    // Get our own IP to avoid self-registration
+    const selfIp = this.tailscale?.getSelfIP() ?? '127.0.0.1';
+
     // Add configured seeds
     if (this.config.seeds) {
       for (const seed of this.config.seeds) {
-        // Skip if seed is our own address
-        if (!seed.address.includes('127.0.0.1') && !seed.address.includes('localhost')) {
-          addresses.push({ address: seed.address, source: 'seed' });
+        // Skip if seed is our own address (check localhost, 127.0.0.1, and our own IP)
+        const seedHost = seed.address.split(':')[0];
+        if (seedHost === '127.0.0.1' || seedHost === 'localhost' || seedHost === selfIp) {
+          this.logger.debug('Skipping self as seed', { seed: seed.address, selfIp });
+          continue;
         }
+        addresses.push({ address: seed.address, source: 'seed' });
       }
     }
 
