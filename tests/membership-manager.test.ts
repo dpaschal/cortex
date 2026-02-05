@@ -543,4 +543,78 @@ describe('MembershipManager', () => {
       expect(manager.getNode('node-2')?.status).toBe('active');
     });
   });
+
+  describe('Node Removal', () => {
+    it('should return false when not leader', async () => {
+      const { manager, mockRaft } = createTestManager();
+      mockRaft.isLeader.mockReturnValue(false);
+
+      // Add a node first
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      const result = await manager.removeNode('node-2');
+
+      expect(result).toBe(false);
+    });
+
+    it('should set status to draining for graceful removal', async () => {
+      const { manager, mockRaft } = createTestManager();
+      mockRaft.isLeader.mockReturnValue(true);
+
+      // Add a node first
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      await manager.removeNode('node-2', true);
+
+      expect(manager.getNode('node-2')?.status).toBe('draining');
+    });
+
+    it('should call raft.appendEntry with node_leave type', async () => {
+      const { manager, mockRaft } = createTestManager();
+      mockRaft.isLeader.mockReturnValue(true);
+
+      // Add a node first
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      await manager.removeNode('node-2');
+
+      expect(mockRaft.appendEntry).toHaveBeenCalledWith(
+        'node_leave',
+        expect.any(Buffer)
+      );
+
+      const callData = JSON.parse(mockRaft.appendEntry.mock.calls[0][1].toString());
+      expect(callData.nodeId).toBe('node-2');
+    });
+  });
 });
