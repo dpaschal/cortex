@@ -627,4 +627,51 @@ describe('RaftNode', () => {
       node.stop();
     });
   });
+
+  describe('Log Replication (Leader)', () => {
+    it('should append entry to local log when leader', async () => {
+      const node = createTestNode();
+      node.start();
+
+      // Become leader
+      await vi.advanceTimersByTimeAsync(301);
+      expect(node.isLeader()).toBe(true);
+
+      const result = await node.appendEntry('task_submit', Buffer.from('{"task": "test"}'));
+
+      expect(result.success).toBe(true);
+      expect(result.index).toBeGreaterThan(0);
+      expect(node.getLastLogIndex()).toBe(result.index);
+
+      node.stop();
+    });
+
+    it('should reject appendEntry when not leader', async () => {
+      const node = createTestNode();
+      node.start();
+
+      // Still follower
+      expect(node.isLeader()).toBe(false);
+
+      const result = await node.appendEntry('task_submit', Buffer.from('{}'));
+
+      expect(result.success).toBe(false);
+      expect(result.index).toBe(-1);
+
+      node.stop();
+    });
+
+    it('should append noop entry when becoming leader', async () => {
+      const node = createTestNode();
+      node.start();
+
+      // Become leader (single node, immediate commit)
+      await vi.advanceTimersByTimeAsync(301);
+
+      // Noop is appended when becoming leader
+      expect(node.getLastLogIndex()).toBeGreaterThan(0);
+
+      node.stop();
+    });
+  });
 });
