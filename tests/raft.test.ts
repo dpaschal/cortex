@@ -186,8 +186,8 @@ describe('RaftNode', () => {
         leaderCommit: 0,
       });
 
-      // Advance more - should not trigger election yet
-      vi.advanceTimersByTime(200);
+      // Advance less than minimum election timeout (150ms) - should not trigger election
+      vi.advanceTimersByTime(140);
 
       expect(node.getState()).toBe('follower');
 
@@ -333,6 +333,179 @@ describe('RaftNode', () => {
       });
 
       expect(response.voteGranted).toBe(false);
+
+      node.stop();
+    });
+  });
+
+  describe('AppendEntries RPC', () => {
+    it('should accept empty AppendEntries (heartbeat) from leader', () => {
+      const node = createTestNode();
+      node.start();
+
+      const response = node.handleAppendEntries({
+        term: 0,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [],
+        leaderCommit: 0,
+      });
+
+      expect(response.success).toBe(true);
+      expect(response.term).toBe(0);
+
+      node.stop();
+    });
+
+    it('should reject AppendEntries from older term', () => {
+      const node = createTestNode();
+      node.start();
+
+      // Move to term 2
+      node.handleAppendEntries({
+        term: 2,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [],
+        leaderCommit: 0,
+      });
+
+      // Receive from old leader
+      const response = node.handleAppendEntries({
+        term: 1,
+        leaderId: 'old-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [],
+        leaderCommit: 0,
+      });
+
+      expect(response.success).toBe(false);
+      expect(response.term).toBe(2);
+
+      node.stop();
+    });
+
+    it('should accept and append new entries', () => {
+      const node = createTestNode();
+      node.start();
+
+      const response = node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [
+          { term: 1, index: 1, type: 'noop', data: Buffer.alloc(0) },
+        ],
+        leaderCommit: 0,
+      });
+
+      expect(response.success).toBe(true);
+      expect(node.getLastLogIndex()).toBe(1);
+      expect(node.getLastLogTerm()).toBe(1);
+
+      node.stop();
+    });
+
+    it('should reject AppendEntries with log gap', () => {
+      const node = createTestNode();
+      node.start();
+
+      // Try to append entry at index 5 when log is empty
+      const response = node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 4,
+        prevLogTerm: 1,
+        entries: [
+          { term: 1, index: 5, type: 'noop', data: Buffer.alloc(0) },
+        ],
+        leaderCommit: 0,
+      });
+
+      expect(response.success).toBe(false);
+
+      node.stop();
+    });
+
+    it('should update commit index from leader', () => {
+      const node = createTestNode();
+      node.start();
+
+      // Add entry
+      node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [
+          { term: 1, index: 1, type: 'noop', data: Buffer.alloc(0) },
+        ],
+        leaderCommit: 0,
+      });
+
+      // Leader commits
+      node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 1,
+        prevLogTerm: 1,
+        entries: [],
+        leaderCommit: 1,
+      });
+
+      expect(node.getCommitIndex()).toBe(1);
+
+      node.stop();
+    });
+
+    it('should emit entryCommitted when applying entries', () => {
+      const node = createTestNode();
+      const committed: Array<{ type: LogEntryType }> = [];
+
+      node.on('entryCommitted', (entry: { type: LogEntryType }) => {
+        committed.push(entry);
+      });
+
+      node.start();
+
+      // Add and commit entry
+      node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [
+          { term: 1, index: 1, type: 'task_submit', data: Buffer.from('{}') },
+        ],
+        leaderCommit: 1,
+      });
+
+      expect(committed).toHaveLength(1);
+      expect(committed[0].type).toBe('task_submit');
+
+      node.stop();
+    });
+
+    it('should set leaderId on valid AppendEntries', () => {
+      const node = createTestNode();
+      node.start();
+
+      expect(node.getLeaderId()).toBeNull();
+
+      node.handleAppendEntries({
+        term: 1,
+        leaderId: 'node-leader',
+        prevLogIndex: 0,
+        prevLogTerm: 0,
+        entries: [],
+        leaderCommit: 0,
+      });
+
+      expect(node.getLeaderId()).toBe('node-leader');
 
       node.stop();
     });
