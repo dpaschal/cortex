@@ -208,6 +208,12 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
             command: spec.container.command,
             args: spec.container.args,
           } : undefined,
+          constraints: spec.constraints ? {
+            allowedNodes: spec.constraints.allowed_nodes,
+            excludedNodes: spec.constraints.excluded_nodes,
+            preferLocal: spec.constraints.prefer_local,
+            avoidGamingNodes: spec.constraints.avoid_gaming_nodes,
+          } : undefined,
           priority: spec.priority,
           timeoutMs: spec.timeout_ms ? parseInt(spec.timeout_ms) : undefined,
         });
