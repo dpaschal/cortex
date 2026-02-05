@@ -7,8 +7,12 @@
 </p>
 
 <p align="center">
+  <b>☕ Buy me Claude Code credits or support a project! ☕</b>
+</p>
+
+<p align="center">
   <a href="https://buymeacoffee.com/dpaschal">
-    <img src="https://img.buymeacoffee.com/button-api/?text=Support this project&emoji=❤️&slug=dpaschal&button_colour=FF0000&font_colour=ffffff&font_family=Cookie&outline_colour=ffffff&coffee_colour=FFDD00" alt="Support Drew">
+    <img src="https://img.buymeacoffee.com/button-api/?text=Fund Claude Code Credits&emoji=🤖&slug=dpaschal&button_colour=FF0000&font_colour=ffffff&font_family=Cookie&outline_colour=ffffff&coffee_colour=FFDD00" alt="Support Drew">
   </a>
 </p>
 
