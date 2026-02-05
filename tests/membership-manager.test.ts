@@ -617,4 +617,166 @@ describe('MembershipManager', () => {
       expect(callData.nodeId).toBe('node-2');
     });
   });
+
+  describe('Raft Entry Handling', () => {
+    it('should add node to membership on node_join commit', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: ['gpu'],
+        })),
+      });
+
+      const node = manager.getNode('node-2');
+      expect(node).toBeDefined();
+      expect(node?.hostname).toBe('peer-host');
+      expect(node?.status).toBe('active');
+    });
+
+    it('should call raft.addPeer when node_join commits', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      expect(mockRaft.addPeer).toHaveBeenCalledWith('node-2', '100.0.0.2:50051', true);
+    });
+
+    it('should emit nodeJoined event on node_join commit', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const joinedEvents: NodeInfo[] = [];
+      manager.on('nodeJoined', (node: NodeInfo) => joinedEvents.push(node));
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      expect(joinedEvents).toHaveLength(1);
+      expect(joinedEvents[0].nodeId).toBe('node-2');
+    });
+
+    it('should remove node from membership on node_leave commit', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+
+      // First add a node
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      expect(manager.getNode('node-2')).toBeDefined();
+
+      // Then remove it
+      entryHandler?.({
+        type: 'node_leave',
+        data: Buffer.from(JSON.stringify({ nodeId: 'node-2' })),
+      });
+
+      expect(manager.getNode('node-2')).toBeUndefined();
+    });
+
+    it('should call raft.removePeer when node_leave commits', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+
+      // Add then remove
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      entryHandler?.({
+        type: 'node_leave',
+        data: Buffer.from(JSON.stringify({ nodeId: 'node-2' })),
+      });
+
+      expect(mockRaft.removePeer).toHaveBeenCalledWith('node-2');
+    });
+
+    it('should emit nodeLeft event on node_leave commit', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const leftEvents: NodeInfo[] = [];
+      manager.on('nodeLeft', (node: NodeInfo) => leftEvents.push(node));
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+
+      // Add then remove
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      entryHandler?.({
+        type: 'node_leave',
+        data: Buffer.from(JSON.stringify({ nodeId: 'node-2' })),
+      });
+
+      expect(leftEvents).toHaveLength(1);
+      expect(leftEvents[0].nodeId).toBe('node-2');
+    });
+
+    it('should ignore noop entries', () => {
+      const { manager, mockRaft } = createTestManager();
+
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+
+      // Should not throw or cause issues
+      expect(() => {
+        entryHandler?.({
+          type: 'noop',
+          data: Buffer.alloc(0),
+        });
+      }).not.toThrow();
+
+      // No nodes added
+      expect(manager.getAllNodes()).toHaveLength(1); // Only self
+    });
+  });
 });
