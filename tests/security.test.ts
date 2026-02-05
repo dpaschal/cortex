@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { AuthManager, AuthConfig, AuthToken } from '../src/security/auth';
+import { AuthManager, AuthConfig, AuthToken, AuthzManager, AuthzPolicy } from '../src/security/auth';
 import { Logger } from 'winston';
 import * as fs from 'fs/promises';
 
@@ -340,6 +340,159 @@ describe('AuthManager', () => {
       const result = authManager.verifyPeerCertificate(cert, wrongNodeId);
 
       expect(result).toBe(false);
+    });
+  });
+});
+
+describe('AuthzManager', () => {
+  let authzManager: AuthzManager;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authzManager = new AuthzManager({
+      logger: createMockLogger(),
+    });
+  });
+
+  describe('Policy Management', () => {
+    it('should add policy successfully', () => {
+      const customPolicy: AuthzPolicy = {
+        name: 'custom-policy',
+        subjects: ['node-1'],
+        actions: ['execute'],
+        resources: ['task:custom'],
+      };
+
+      authzManager.addPolicy(customPolicy);
+
+      // Verify the policy works by checking authorization
+      expect(authzManager.isAuthorized('node-1', 'execute', 'task:custom')).toBe(true);
+      // Should not authorize different subject
+      expect(authzManager.isAuthorized('node-2', 'execute', 'task:custom')).toBe(false);
+    });
+
+    it('should remove policy by name', () => {
+      const customPolicy: AuthzPolicy = {
+        name: 'removable-policy',
+        subjects: ['node-1'],
+        actions: ['delete'],
+        resources: ['resource:test'],
+      };
+
+      authzManager.addPolicy(customPolicy);
+
+      // Verify policy is active
+      expect(authzManager.isAuthorized('node-1', 'delete', 'resource:test')).toBe(true);
+
+      // Remove the policy
+      const removed = authzManager.removePolicy('removable-policy');
+      expect(removed).toBe(true);
+
+      // Verify policy no longer authorizes
+      expect(authzManager.isAuthorized('node-1', 'delete', 'resource:test')).toBe(false);
+    });
+
+    it('should load default policies on init', () => {
+      // Test cluster-read default policy: all nodes can read cluster:state
+      expect(authzManager.isAuthorized('any-node', 'read', 'cluster:state')).toBe(true);
+      expect(authzManager.isAuthorized('any-node', 'read', 'cluster:nodes')).toBe(true);
+      expect(authzManager.isAuthorized('any-node', 'read', 'cluster:sessions')).toBe(true);
+
+      // Test task-submit default policy: all nodes can submit tasks
+      expect(authzManager.isAuthorized('any-node', 'submit', 'task:123')).toBe(true);
+      expect(authzManager.isAuthorized('any-node', 'submit', 'task:any-task')).toBe(true);
+    });
+
+    it('should allow adding multiple policies', () => {
+      const policy1: AuthzPolicy = {
+        name: 'policy-1',
+        subjects: ['node-a'],
+        actions: ['action-1'],
+        resources: ['resource:1'],
+      };
+
+      const policy2: AuthzPolicy = {
+        name: 'policy-2',
+        subjects: ['node-b'],
+        actions: ['action-2'],
+        resources: ['resource:2'],
+      };
+
+      authzManager.addPolicy(policy1);
+      authzManager.addPolicy(policy2);
+
+      // Verify both policies work
+      expect(authzManager.isAuthorized('node-a', 'action-1', 'resource:1')).toBe(true);
+      expect(authzManager.isAuthorized('node-b', 'action-2', 'resource:2')).toBe(true);
+
+      // Cross-check: node-a should not have node-b's permissions
+      expect(authzManager.isAuthorized('node-a', 'action-2', 'resource:2')).toBe(false);
+      expect(authzManager.isAuthorized('node-b', 'action-1', 'resource:1')).toBe(false);
+    });
+  });
+
+  describe('Authorization Checks', () => {
+    it('should authorize matching subject-action-resource', () => {
+      const policy: AuthzPolicy = {
+        name: 'exact-match-policy',
+        subjects: ['specific-node'],
+        actions: ['specific-action'],
+        resources: ['specific:resource'],
+      };
+
+      authzManager.addPolicy(policy);
+
+      expect(authzManager.isAuthorized('specific-node', 'specific-action', 'specific:resource')).toBe(true);
+    });
+
+    it('should deny non-matching policy', () => {
+      // Without adding any custom policy, try to access a resource not covered by defaults
+      expect(authzManager.isAuthorized('any-node', 'write', 'cluster:state')).toBe(false);
+      expect(authzManager.isAuthorized('any-node', 'delete', 'task:123')).toBe(false);
+      expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker')).toBe(false);
+    });
+
+    it('should support wildcard subjects (*)', () => {
+      // The default 'cluster-read' policy uses wildcard subject '*'
+      // Any subject should be able to read cluster:state
+      expect(authzManager.isAuthorized('node-1', 'read', 'cluster:state')).toBe(true);
+      expect(authzManager.isAuthorized('node-2', 'read', 'cluster:state')).toBe(true);
+      expect(authzManager.isAuthorized('random-node', 'read', 'cluster:state')).toBe(true);
+    });
+
+    it('should support wildcard actions (*)', () => {
+      const wildcardActionPolicy: AuthzPolicy = {
+        name: 'wildcard-action-policy',
+        subjects: ['admin-node'],
+        actions: ['*'],
+        resources: ['admin:panel'],
+      };
+
+      authzManager.addPolicy(wildcardActionPolicy);
+
+      // Any action should be allowed for admin-node on admin:panel
+      expect(authzManager.isAuthorized('admin-node', 'read', 'admin:panel')).toBe(true);
+      expect(authzManager.isAuthorized('admin-node', 'write', 'admin:panel')).toBe(true);
+      expect(authzManager.isAuthorized('admin-node', 'delete', 'admin:panel')).toBe(true);
+      expect(authzManager.isAuthorized('admin-node', 'execute', 'admin:panel')).toBe(true);
+
+      // But other nodes should not have access
+      expect(authzManager.isAuthorized('other-node', 'read', 'admin:panel')).toBe(false);
+    });
+
+    it('should support role-based subjects (role:leader with context)', () => {
+      // The default 'leader-only' policy uses 'role:leader' subject
+      // Should authorize when context.role matches 'leader'
+      expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker', { role: 'leader' })).toBe(true);
+      expect(authzManager.isAuthorized('any-node', 'remove', 'node:worker', { role: 'leader' })).toBe(true);
+      expect(authzManager.isAuthorized('any-node', 'scale', 'cluster:workers', { role: 'leader' })).toBe(true);
+
+      // Should deny when context.role is not 'leader'
+      expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker', { role: 'follower' })).toBe(false);
+      expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker', { role: 'worker' })).toBe(false);
+
+      // Should deny when no context is provided
+      expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker')).toBe(false);
     });
   });
 });
