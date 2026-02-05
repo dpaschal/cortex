@@ -39,12 +39,33 @@ Claude Cluster is a peer-to-peer compute mesh for distributed Claude sessions:
 
 ### Initial Cluster Nodes
 
-| Node | Tailscale IP | Role |
-|------|--------------|------|
-| rog2 | 100.104.78.123 | Leader eligible |
-| terminus | 100.85.203.53 | Leader eligible |
-| forge | 100.94.211.117 | Leader eligible |
-| htnas02 | 100.103.240.34 | Worker |
+| Node | Tailscale IP | Role | Node ID |
+|------|--------------|------|---------|
+| rog2 | 100.104.78.123 | Leader eligible | `rog2-8e800054` |
+| terminus-1 | 100.120.202.76 | Leader eligible | needs fix (see below) |
+| forge | 100.94.211.117 | Leader eligible | - |
+| htnas02 | 100.103.240.34 | Worker | - |
+
+## Pending Tasks
+
+### Fix terminus persistent node ID
+
+**Priority:** Low (cluster works, just cosmetic)
+
+The terminus node doesn't have a persistent node ID file, so it generates a random ID on each restart instead of using the `hostname-shortid` format.
+
+**To fix on terminus:**
+```bash
+mkdir -p ~/.claudecluster
+echo "60919007" > ~/.claudecluster/node-id
+# After restart, node ID will be: terminus-60919007
+```
+
+Or regenerate a fresh one:
+```bash
+mkdir -p ~/.claudecluster
+echo "$(uuidgen | cut -c1-8)" > ~/.claudecluster/node-id
+```
 
 ## Development Commands
 
