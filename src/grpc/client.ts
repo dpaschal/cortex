@@ -285,19 +285,69 @@ export class AgentClient {
     return this.pool.getConnection(this.address).agentClient;
   }
 
-  executeTask(request: ExecuteTaskRequest): grpc.ClientReadableStream<ExecuteTaskResponse> {
-    return this.pool.callStream(this.client, 'ExecuteTask', request);
+  /**
+   * Execute a task on the remote node.
+   * This is an async generator that waits for connection before streaming.
+   */
+  async *executeTask(request: ExecuteTaskRequest): AsyncGenerator<ExecuteTaskResponse> {
+    // Wait for connection to be ready before streaming
+    const ready = await this.pool.waitForReady(this.address, 10000);
+    if (!ready) {
+      throw new Error(`Failed to connect to agent at ${this.address}`);
+    }
+
+    const stream = this.pool.callStream<ExecuteTaskRequest, ExecuteTaskResponse>(
+      this.client,
+      'ExecuteTask',
+      request
+    );
+
+    // Convert callback-based stream to async generator
+    const responses: ExecuteTaskResponse[] = [];
+    let error: Error | null = null;
+    let ended = false;
+
+    stream.on('data', (data: ExecuteTaskResponse) => {
+      responses.push(data);
+    });
+
+    stream.on('error', (err: Error) => {
+      error = err;
+      ended = true;
+    });
+
+    stream.on('end', () => {
+      ended = true;
+    });
+
+    // Yield responses as they come in
+    while (!ended || responses.length > 0) {
+      if (responses.length > 0) {
+        yield responses.shift()!;
+      } else if (!ended) {
+        // Wait a bit for more data
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    }
+
+    if (error) {
+      throw error;
+    }
   }
 
   async getResources(): Promise<NodeResources> {
+    // Wait for connection before making call
+    await this.pool.waitForReady(this.address, 5000);
     return this.pool.call(this.client, 'GetResources', {});
   }
 
   async healthCheck(): Promise<HealthCheckResponse> {
+    await this.pool.waitForReady(this.address, 5000);
     return this.pool.call(this.client, 'HealthCheck', {}, 5000);
   }
 
   async cancelExecution(taskId: string): Promise<CancelExecutionResponse> {
+    await this.pool.waitForReady(this.address, 5000);
     return this.pool.call(this.client, 'CancelExecution', { task_id: taskId });
   }
 }
