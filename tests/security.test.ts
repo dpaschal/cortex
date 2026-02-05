@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { AuthManager, AuthConfig, AuthToken, AuthzManager, AuthzPolicy } from '../src/security/auth';
+import { SecretsManager, EnvInjector } from '../src/security/secrets';
 import { Logger } from 'winston';
 import * as fs from 'fs/promises';
 
@@ -494,5 +495,258 @@ describe('AuthzManager', () => {
       // Should deny when no context is provided
       expect(authzManager.isAuthorized('any-node', 'approve', 'node:worker')).toBe(false);
     });
+  });
+});
+
+describe('SecretsManager', () => {
+  const testSecretsDir = '/tmp/test-secrets';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  describe('Static Utilities', () => {
+    it('should generate random secret of specified length', () => {
+      const secret16 = SecretsManager.generateSecret(16);
+      const secret32 = SecretsManager.generateSecret(32);
+      const secretDefault = SecretsManager.generateSecret();
+
+      // Hex encoding doubles the length
+      expect(secret16).toHaveLength(32);
+      expect(secret32).toHaveLength(64);
+      expect(secretDefault).toHaveLength(64); // Default is 32 bytes = 64 hex chars
+
+      // Should be valid hex strings
+      expect(secret16).toMatch(/^[a-f0-9]+$/);
+      expect(secret32).toMatch(/^[a-f0-9]+$/);
+      expect(secretDefault).toMatch(/^[a-f0-9]+$/);
+
+      // Each call should generate different values
+      const anotherSecret = SecretsManager.generateSecret(32);
+      expect(anotherSecret).not.toBe(secret32);
+    });
+
+    it('should hash and verify password correctly', () => {
+      const password = 'my-secure-password-123';
+
+      // Hash the password
+      const { hash, salt } = SecretsManager.hash(password);
+
+      // Hash and salt should be non-empty hex strings
+      expect(hash).toMatch(/^[a-f0-9]+$/);
+      expect(salt).toMatch(/^[a-f0-9]+$/);
+      expect(hash.length).toBeGreaterThan(0);
+      expect(salt.length).toBeGreaterThan(0);
+
+      // Verification should succeed with correct password
+      const isValid = SecretsManager.verifyHash(password, hash, salt);
+      expect(isValid).toBe(true);
+
+      // Using the same salt should produce the same hash
+      const { hash: hash2 } = SecretsManager.hash(password, salt);
+      expect(hash2).toBe(hash);
+    });
+
+    it('should reject incorrect password verification', () => {
+      const password = 'correct-password';
+      const wrongPassword = 'wrong-password';
+
+      // Hash the correct password
+      const { hash, salt } = SecretsManager.hash(password);
+
+      // Verification should fail with wrong password
+      const isValid = SecretsManager.verifyHash(wrongPassword, hash, salt);
+      expect(isValid).toBe(false);
+
+      // Verification should fail with wrong salt
+      const wrongSalt = 'deadbeef12345678';
+      const isValidWrongSalt = SecretsManager.verifyHash(password, hash, wrongSalt);
+      expect(isValidWrongSalt).toBe(false);
+    });
+  });
+
+  describe('Secret Storage', () => {
+    let secretsManager: SecretsManager;
+    const masterKeyHex = 'a'.repeat(64); // 32 bytes in hex
+
+    beforeEach(() => {
+      // Set up environment with master key
+      process.env.TEST_MASTER_KEY = masterKeyHex;
+
+      secretsManager = new SecretsManager({
+        logger: createMockLogger(),
+        secretsDir: testSecretsDir,
+        masterKeyEnvVar: 'TEST_MASTER_KEY',
+      });
+    });
+
+    afterEach(() => {
+      delete process.env.TEST_MASTER_KEY;
+    });
+
+    it('should set and get secret', async () => {
+      // Mock fs operations
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await secretsManager.initialize();
+
+      await secretsManager.set('API_KEY', 'my-api-key-value');
+
+      const value = secretsManager.get('API_KEY');
+      expect(value).toBe('my-api-key-value');
+
+      // Verify fs.writeFile was called to persist the secret
+      expect(fs.writeFile).toHaveBeenCalled();
+    });
+
+    it('should list secret names', async () => {
+      // Mock fs operations
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await secretsManager.initialize();
+
+      await secretsManager.set('SECRET_ONE', 'value1');
+      await secretsManager.set('SECRET_TWO', 'value2');
+      await secretsManager.set('SECRET_THREE', 'value3');
+
+      const names = secretsManager.list();
+
+      expect(names).toContain('SECRET_ONE');
+      expect(names).toContain('SECRET_TWO');
+      expect(names).toContain('SECRET_THREE');
+      expect(names).toHaveLength(3);
+    });
+
+    it('should delete secret', async () => {
+      // Mock fs operations
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await secretsManager.initialize();
+
+      await secretsManager.set('TO_DELETE', 'some-value');
+      expect(secretsManager.get('TO_DELETE')).toBe('some-value');
+
+      const deleted = await secretsManager.delete('TO_DELETE');
+      expect(deleted).toBe(true);
+
+      expect(secretsManager.get('TO_DELETE')).toBeUndefined();
+
+      // Deleting non-existent secret should return false
+      const deletedAgain = await secretsManager.delete('TO_DELETE');
+      expect(deletedAgain).toBe(false);
+    });
+
+    it('should check if secret exists', async () => {
+      // Mock fs operations
+      vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+      vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+      vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+      await secretsManager.initialize();
+
+      expect(secretsManager.has('NONEXISTENT')).toBe(false);
+
+      await secretsManager.set('EXISTS', 'value');
+      expect(secretsManager.has('EXISTS')).toBe(true);
+
+      await secretsManager.delete('EXISTS');
+      expect(secretsManager.has('EXISTS')).toBe(false);
+    });
+  });
+});
+
+describe('EnvInjector', () => {
+  const testSecretsDir = '/tmp/test-secrets';
+  let secretsManager: SecretsManager;
+  let envInjector: EnvInjector;
+  const masterKeyHex = 'b'.repeat(64); // 32 bytes in hex
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+
+    // Set up environment with master key
+    process.env.TEST_MASTER_KEY_ENV = masterKeyHex;
+
+    // Mock fs operations
+    vi.mocked(fs.readFile).mockRejectedValue(new Error('File not found'));
+    vi.mocked(fs.mkdir).mockResolvedValue(undefined);
+    vi.mocked(fs.writeFile).mockResolvedValue(undefined);
+
+    secretsManager = new SecretsManager({
+      logger: createMockLogger(),
+      secretsDir: testSecretsDir,
+      masterKeyEnvVar: 'TEST_MASTER_KEY_ENV',
+    });
+
+    await secretsManager.initialize();
+
+    // Set up some secrets for testing
+    await secretsManager.set('DB_PASSWORD', 'super-secret-db-pass');
+    await secretsManager.set('API_TOKEN', 'token-12345');
+
+    envInjector = new EnvInjector(secretsManager, {
+      logger: createMockLogger(),
+    });
+  });
+
+  afterEach(() => {
+    delete process.env.TEST_MASTER_KEY_ENV;
+    vi.restoreAllMocks();
+  });
+
+  it('should interpolate ${SECRET_NAME} in env vars', () => {
+    const inputEnv = {
+      DATABASE_URL: 'postgres://user:${DB_PASSWORD}@localhost/mydb',
+      AUTH_HEADER: 'Bearer ${API_TOKEN}',
+    };
+
+    const result = envInjector.injectSecrets(inputEnv);
+
+    expect(result.DATABASE_URL).toBe('postgres://user:super-secret-db-pass@localhost/mydb');
+    expect(result.AUTH_HEADER).toBe('Bearer token-12345');
+  });
+
+  it('should leave non-secret vars unchanged', () => {
+    const inputEnv = {
+      PLAIN_VAR: 'no secrets here',
+      ANOTHER_VAR: 'just a regular value',
+      PORT: '3000',
+      MISSING_SECRET: '${NONEXISTENT_SECRET}', // Secret doesn't exist
+    };
+
+    const result = envInjector.injectSecrets(inputEnv);
+
+    expect(result.PLAIN_VAR).toBe('no secrets here');
+    expect(result.ANOTHER_VAR).toBe('just a regular value');
+    expect(result.PORT).toBe('3000');
+    // Non-existent secrets should be left as-is
+    expect(result.MISSING_SECRET).toBe('${NONEXISTENT_SECRET}');
+  });
+
+  it('should export secrets as prefixed env variables', () => {
+    // Test with default prefix
+    const resultDefault = envInjector.getSecretsAsEnv();
+
+    expect(resultDefault['SECRET_DB_PASSWORD']).toBe('super-secret-db-pass');
+    expect(resultDefault['SECRET_API_TOKEN']).toBe('token-12345');
+
+    // Test with custom prefix
+    const resultCustom = envInjector.getSecretsAsEnv('MY_');
+
+    expect(resultCustom['MY_DB_PASSWORD']).toBe('super-secret-db-pass');
+    expect(resultCustom['MY_API_TOKEN']).toBe('token-12345');
+
+    // Original keys should not be present with different prefix
+    expect(resultCustom['SECRET_DB_PASSWORD']).toBeUndefined();
   });
 });
