@@ -558,40 +558,196 @@ export class ClaudeCluster extends EventEmitter {
     // Start approval workflow
     this.approval!.start();
 
-    // Try to join existing cluster via seeds
-    if (this.config.seeds && this.config.seeds.length > 0) {
-      for (const seed of this.config.seeds) {
-        try {
-          const joined = await this.membership!.joinCluster(seed.address);
-          if (joined) {
-            this.logger.info('Joined existing cluster via seed', { seed: seed.address });
-            return;
+    // Wait for network to be ready before attempting cluster join
+    await this.waitForNetworkReady();
+
+    // Try to join existing cluster with retries
+    const joined = await this.joinClusterWithRetry();
+    if (joined) {
+      return;
+    }
+
+    // Start new cluster only after exhausting all join attempts
+    this.logger.info('Starting new cluster as leader');
+  }
+
+  /**
+   * Wait for Tailscale network to be ready before attempting cluster operations.
+   * This prevents the race condition where we try to join before network is up.
+   */
+  private async waitForNetworkReady(): Promise<void> {
+    const maxWaitMs = 30000; // 30 seconds max wait
+    const checkIntervalMs = 1000;
+    const startTime = Date.now();
+
+    this.logger.info('Waiting for network to be ready...');
+
+    while (Date.now() - startTime < maxWaitMs) {
+      // Check if Tailscale has discovered any nodes (including ourselves)
+      if (this.tailscale) {
+        const nodes = this.tailscale.getClusterNodes();
+        if (nodes.length > 0) {
+          this.logger.info('Network ready', { discoveredNodes: nodes.length });
+          return;
+        }
+      }
+
+      // Also try a simple connectivity check to seeds
+      if (this.config.seeds && this.config.seeds.length > 0) {
+        for (const seed of this.config.seeds) {
+          try {
+            // Quick TCP connectivity check
+            const [host, port] = seed.address.split(':');
+            const isReachable = await this.checkPortReachable(host, parseInt(port), 2000);
+            if (isReachable) {
+              this.logger.info('Network ready - seed reachable', { seed: seed.address });
+              return;
+            }
+          } catch {
+            // Ignore errors, keep waiting
           }
-        } catch (error) {
-          this.logger.warn('Failed to join via seed', { seed: seed.address, error });
+        }
+      }
+
+      await this.sleep(checkIntervalMs);
+    }
+
+    this.logger.warn('Network readiness timeout - proceeding anyway', { waitedMs: maxWaitMs });
+  }
+
+  /**
+   * Check if a TCP port is reachable with timeout.
+   */
+  private checkPortReachable(host: string, port: number, timeoutMs: number): Promise<boolean> {
+    return new Promise((resolve) => {
+      const net = require('net');
+      const socket = new net.Socket();
+
+      socket.setTimeout(timeoutMs);
+
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.on('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.connect(port, host);
+    });
+  }
+
+  /**
+   * Try to join an existing cluster with exponential backoff retry.
+   * This is the proper way to handle transient network failures during startup.
+   */
+  private async joinClusterWithRetry(): Promise<boolean> {
+    const maxAttempts = 5;
+    const initialDelayMs = 1000;
+    const maxDelayMs = 10000;
+
+    // Collect all possible addresses to try
+    const addresses: Array<{ address: string; source: string }> = [];
+
+    // Add configured seeds
+    if (this.config.seeds) {
+      for (const seed of this.config.seeds) {
+        // Skip if seed is our own address
+        if (!seed.address.includes('127.0.0.1') && !seed.address.includes('localhost')) {
+          addresses.push({ address: seed.address, source: 'seed' });
         }
       }
     }
 
-    // Try to discover cluster via Tailscale
+    // Add Tailscale-discovered nodes
     if (this.tailscale) {
       const clusterNodes = this.tailscale.getClusterNodes();
       for (const node of clusterNodes) {
-        try {
-          const address = `${node.ip}:${this.config.node.grpcPort}`;
-          const joined = await this.membership!.joinCluster(address);
-          if (joined) {
-            this.logger.info('Joined existing cluster via Tailscale', { hostname: node.hostname });
-            return;
-          }
-        } catch (error) {
-          this.logger.warn('Failed to join via Tailscale node', { hostname: node.hostname, error });
+        const address = `${node.ip}:${this.config.node.grpcPort}`;
+        // Skip if this is our own node
+        if (node.hostname !== require('os').hostname()) {
+          addresses.push({ address, source: `tailscale:${node.hostname}` });
         }
       }
     }
 
-    // Start new cluster
-    this.logger.info('Starting new cluster as leader');
+    if (addresses.length === 0) {
+      this.logger.info('No seed nodes or cluster peers found');
+      return false;
+    }
+
+    this.logger.info('Attempting to join cluster', {
+      candidates: addresses.length,
+      maxAttempts
+    });
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const delayMs = Math.min(initialDelayMs * Math.pow(2, attempt - 1), maxDelayMs);
+
+      // Try each address
+      for (const { address, source } of addresses) {
+        try {
+          this.logger.debug('Trying to join via', { address, source, attempt });
+          const joined = await this.membership!.joinCluster(address);
+          if (joined) {
+            this.logger.info('Joined existing cluster', {
+              address,
+              source,
+              attempt
+            });
+            return true;
+          }
+        } catch (error) {
+          this.logger.debug('Join attempt failed', {
+            address,
+            source,
+            attempt,
+            error: (error as Error).message
+          });
+        }
+      }
+
+      // If not the last attempt, wait before retrying
+      if (attempt < maxAttempts) {
+        this.logger.info('Cluster join failed, retrying...', {
+          attempt,
+          nextAttemptIn: `${delayMs}ms`
+        });
+        await this.sleep(delayMs);
+
+        // Refresh Tailscale-discovered nodes for next attempt
+        if (this.tailscale) {
+          const newNodes = this.tailscale.getClusterNodes();
+          for (const node of newNodes) {
+            const address = `${node.ip}:${this.config.node.grpcPort}`;
+            if (node.hostname !== require('os').hostname()) {
+              const exists = addresses.some(a => a.address === address);
+              if (!exists) {
+                addresses.push({ address, source: `tailscale:${node.hostname}` });
+                this.logger.debug('Discovered new node', { hostname: node.hostname });
+              }
+            }
+          }
+        }
+      }
+    }
+
+    this.logger.warn('Failed to join cluster after all attempts', {
+      attempts: maxAttempts,
+      triedAddresses: addresses.length
+    });
+    return false;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   private async initializeMcp(): Promise<void> {
