@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { EventEmitter } from 'events';
 import Docker from 'dockerode';
 import { Logger } from 'winston';
+import { SubagentExecutor, ToolDefinition } from './subagent-executor.js';
 
 export interface TaskSpec {
   taskId: string;
@@ -63,6 +64,8 @@ export interface TaskExecutorConfig {
   dockerSocket?: string;
   sandboxCommand?: string;
   maxConcurrentTasks?: number;
+  anthropicApiKey?: string;
+  availableTools?: Map<string, ToolDefinition>;
 }
 
 interface RunningTask {
@@ -78,6 +81,7 @@ interface RunningTask {
 export class TaskExecutor extends EventEmitter {
   private config: TaskExecutorConfig;
   private docker: Docker | null = null;
+  private subagentExecutor: SubagentExecutor | null = null;
   private runningTasks: Map<string, RunningTask> = new Map();
   private maxConcurrent: number;
 
@@ -95,6 +99,18 @@ export class TaskExecutor extends EventEmitter {
       } catch {
         this.config.logger.warn('Docker not available, container tasks will fail');
       }
+    }
+
+    // Initialize subagent executor if API key is available
+    const apiKey = config.anthropicApiKey ?? process.env.ANTHROPIC_API_KEY;
+    if (apiKey) {
+      this.subagentExecutor = new SubagentExecutor({
+        logger: config.logger,
+        apiKey,
+        availableTools: config.availableTools,
+      });
+    } else {
+      this.config.logger.warn('Anthropic API key not configured, subagent tasks will fail');
     }
   }
 
@@ -377,34 +393,91 @@ export class TaskExecutor extends EventEmitter {
   private async executeSubagent(spec: TaskSpec, running: RunningTask): Promise<TaskResult> {
     const subagentSpec = spec.subagent!;
 
-    // Subagent execution would integrate with Claude Code SDK
-    // For now, return a placeholder that indicates this needs external handling
-    this.config.logger.info('Subagent task requires external handling', {
+    if (!this.subagentExecutor) {
+      return {
+        taskId: spec.taskId,
+        success: false,
+        exitCode: -1,
+        stdout: Buffer.alloc(0),
+        stderr: Buffer.alloc(0),
+        error: 'Subagent executor not configured (missing ANTHROPIC_API_KEY)',
+        startedAt: running.startedAt,
+        completedAt: Date.now(),
+      };
+    }
+
+    this.config.logger.info('Starting subagent execution', {
       taskId: spec.taskId,
       prompt: subagentSpec.prompt.substring(0, 100),
+      model: subagentSpec.model,
+      tools: subagentSpec.tools,
     });
 
-    // Emit a status update indicating subagent task needs routing
+    // Emit status update
     this.emitOutput(spec.taskId, 'status', Buffer.from(JSON.stringify({
-      type: 'subagent_pending',
-      spec: subagentSpec,
+      type: 'subagent_started',
+      model: subagentSpec.model,
+      toolCount: subagentSpec.tools?.length ?? 0,
     })));
 
-    // In a real implementation, this would:
-    // 1. Call Claude API with the prompt
-    // 2. Handle tool calls within the subagent
-    // 3. Return the final response
-
-    return {
-      taskId: spec.taskId,
-      success: false,
-      exitCode: -1,
-      stdout: Buffer.alloc(0),
-      stderr: Buffer.alloc(0),
-      error: 'Subagent execution requires Claude API integration',
-      startedAt: running.startedAt,
-      completedAt: Date.now(),
+    // Forward events from subagent executor
+    const onText = (text: string) => {
+      this.emitOutput(spec.taskId, 'stdout', Buffer.from(text));
     };
+    const onTurn = (data: { turn: number; maxTurns: number }) => {
+      this.emitOutput(spec.taskId, 'status', Buffer.from(JSON.stringify({
+        type: 'subagent_turn',
+        ...data,
+      })));
+    };
+    const onToolCall = (data: { name: string; input: unknown }) => {
+      this.emitOutput(spec.taskId, 'status', Buffer.from(JSON.stringify({
+        type: 'tool_call',
+        ...data,
+      })));
+    };
+    const onToolResult = (data: { name: string; result: string }) => {
+      this.emitOutput(spec.taskId, 'status', Buffer.from(JSON.stringify({
+        type: 'tool_result',
+        ...data,
+      })));
+    };
+
+    this.subagentExecutor.on('text', onText);
+    this.subagentExecutor.on('turn', onTurn);
+    this.subagentExecutor.on('tool_call', onToolCall);
+    this.subagentExecutor.on('tool_result', onToolResult);
+
+    try {
+      const result = await this.subagentExecutor.execute(subagentSpec);
+
+      // Emit completion status
+      this.emitOutput(spec.taskId, 'status', Buffer.from(JSON.stringify({
+        type: 'subagent_completed',
+        success: result.success,
+        turns: result.turns,
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        toolCalls: result.toolCalls.length,
+      })));
+
+      return {
+        taskId: spec.taskId,
+        success: result.success,
+        exitCode: result.success ? 0 : 1,
+        stdout: Buffer.from(result.response),
+        stderr: result.error ? Buffer.from(result.error) : Buffer.alloc(0),
+        error: result.error,
+        startedAt: running.startedAt,
+        completedAt: Date.now(),
+      };
+    } finally {
+      // Clean up event listeners
+      this.subagentExecutor.off('text', onText);
+      this.subagentExecutor.off('turn', onTurn);
+      this.subagentExecutor.off('tool_call', onToolCall);
+      this.subagentExecutor.off('tool_result', onToolResult);
+    }
   }
 
   private emitOutput(taskId: string, type: 'stdout' | 'stderr' | 'status', data: Buffer): void {
