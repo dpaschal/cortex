@@ -21,7 +21,14 @@ import { KubernetesAdapter } from './kubernetes/adapter.js';
 import { ClusterMcpServer } from './mcp/server.js';
 import { AuthManager, AuthzManager } from './security/auth.js';
 import { SecretsManager } from './security/secrets.js';
+import { ClusterAnnouncer } from './cluster/announcements.js';
+import { Command } from 'commander';
 import { randomUUID } from 'crypto';
+
+export interface ClusterModeOptions {
+  invisible?: boolean;  // Can see cluster but isn't announced
+  isolated?: boolean;   // No cluster connection at all
+}
 
 export interface ClusterConfig {
   cluster: {
@@ -29,6 +36,7 @@ export interface ClusterConfig {
     autoApproveTags?: string[];
     autoApproveEphemeral?: boolean;
   };
+  mode?: ClusterModeOptions;
   node: {
     grpcPort: number;
     role: 'leader-eligible' | 'worker';
@@ -111,6 +119,7 @@ export class ClaudeCluster extends EventEmitter {
   private authManager: AuthManager | null = null;
   private authzManager: AuthzManager | null = null;
   private secretsManager: SecretsManager | null = null;
+  private announcer: ClusterAnnouncer | null = null;
 
   private running = false;
 
@@ -157,7 +166,21 @@ export class ClaudeCluster extends EventEmitter {
       return;
     }
 
-    this.logger.info('Starting Claude Cluster', {
+    // Check for isolated mode - no cluster connection
+    if (this.config.mode?.isolated) {
+      this.logger.info('Starting in isolated mode (no cluster connection)');
+      console.log('\n' + '='.repeat(60));
+      console.log('  Claude Cluster - ISOLATED MODE');
+      console.log('='.repeat(60));
+      console.log('  Not connected to any cluster.');
+      console.log('  Use --invisible or no flags to join the cluster.');
+      console.log('='.repeat(60) + '\n');
+      this.running = true;
+      return;
+    }
+
+    const modeStr = this.config.mode?.invisible ? ' (invisible mode)' : '';
+    this.logger.info(`Starting Claude Cluster${modeStr}`, {
       nodeId: this.nodeId,
       clusterId: this.config.cluster.id,
     });
@@ -174,6 +197,9 @@ export class ClaudeCluster extends EventEmitter {
 
       // Initialize cluster components
       await this.initializeCluster();
+
+      // Initialize announcements
+      this.initializeAnnouncements();
 
       // Initialize agent components
       await this.initializeAgent();
@@ -375,6 +401,28 @@ export class ClaudeCluster extends EventEmitter {
     this.logger.info('Cluster components initialized');
   }
 
+  private initializeAnnouncements(): void {
+    const hostname = this.tailscale?.getSelfHostname() ?? 'localhost';
+
+    this.announcer = new ClusterAnnouncer({
+      nodeId: this.nodeId,
+      hostname,
+      logger: this.logger,
+      membership: this.membership!,
+      clientPool: this.clientPool!,
+      invisible: this.config.mode?.invisible,
+    });
+
+    // Forward announcements to event emitter
+    this.announcer.on('announcement', (announcement) => {
+      this.emit('clusterAnnouncement', announcement);
+    });
+
+    this.logger.info('Announcements initialized', {
+      invisible: this.config.mode?.invisible ?? false,
+    });
+  }
+
   private async initializeAgent(): Promise<void> {
     // Resource monitor
     this.resourceMonitor = new ResourceMonitor({
@@ -548,45 +596,76 @@ export class ClaudeCluster extends EventEmitter {
 
 // CLI entry point
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  let configPath = 'config/default.yaml';
+  const program = new Command();
 
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--config' && args[i + 1]) {
-      configPath = args[i + 1];
-    }
-  }
+  program
+    .name('claudecluster')
+    .description('Peer-to-peer compute mesh for Claude sessions')
+    .version('0.1.0')
+    .option('-c, --config <path>', 'Path to configuration file', 'config/default.yaml')
+    .option('--invisible', 'Connect to cluster without announcing presence (can see others, they cannot see you)')
+    .option('--isolated', 'Run without any cluster connection')
+    .option('-p, --port <number>', 'gRPC port to listen on')
+    .option('-s, --seed <address>', 'Seed node address to join cluster')
+    .option('-v, --verbose', 'Enable verbose logging')
+    .parse(process.argv);
+
+  const options = program.opts();
 
   // Load configuration
   let config: ClusterConfig;
   try {
-    const configFile = await fs.readFile(configPath, 'utf-8');
+    const configFile = await fs.readFile(options.config, 'utf-8');
     config = parseYaml(configFile) as ClusterConfig;
   } catch {
-    console.error(`Failed to load config from ${configPath}, using defaults`);
+    console.error(`Failed to load config from ${options.config}, using defaults`);
     // Load from package default
     const defaultConfigPath = path.join(__dirname, '../config/default.yaml');
     const configFile = await fs.readFile(defaultConfigPath, 'utf-8');
     config = parseYaml(configFile) as ClusterConfig;
   }
 
+  // Apply CLI options to config
+  config.mode = {
+    invisible: options.invisible ?? false,
+    isolated: options.isolated ?? false,
+  };
+
+  if (options.port) {
+    config.node.grpcPort = parseInt(options.port);
+  }
+
+  if (options.seed) {
+    config.seeds = [{ address: options.seed }];
+  }
+
+  if (options.verbose) {
+    config.logging.level = 'debug';
+  }
+
   const cluster = new ClaudeCluster(config);
 
   // Handle shutdown signals
   process.on('SIGINT', async () => {
-    console.log('\nReceived SIGINT, shutting down...');
+    console.log('\nReceived SIGINT, shutting down gracefully...');
     await cluster.stop();
     process.exit(0);
   });
 
   process.on('SIGTERM', async () => {
-    console.log('Received SIGTERM, shutting down...');
+    console.log('Received SIGTERM, shutting down gracefully...');
     await cluster.stop();
     process.exit(0);
   });
 
   // Start the cluster
   await cluster.start();
+
+  // If not isolated, show ready message
+  if (!config.mode.isolated) {
+    const modeStr = config.mode.invisible ? ' (invisible)' : '';
+    console.log(`\nClaude Cluster node ready${modeStr}. Press Ctrl+C to exit.\n`);
+  }
 }
 
 // Export for programmatic use

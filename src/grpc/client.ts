@@ -136,7 +136,7 @@ export class GrpcClientPool extends EventEmitter {
     const deadline = new Date(Date.now() + timeout);
 
     return new Promise((resolve, reject) => {
-      const clientAny = client as Record<string, (
+      const clientAny = client as unknown as Record<string, (
         request: TReq,
         metadata: grpc.Metadata,
         options: { deadline: Date },
@@ -165,7 +165,7 @@ export class GrpcClientPool extends EventEmitter {
     method: string,
     request: TReq
   ): grpc.ClientReadableStream<TRes> {
-    const clientAny = client as Record<string, (
+    const clientAny = client as unknown as Record<string, (
       request: TReq,
       metadata: grpc.Metadata
     ) => grpc.ClientReadableStream<TRes>>;

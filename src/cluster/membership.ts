@@ -142,7 +142,8 @@ export class MembershipManager extends EventEmitter {
 
       const selfNode = this.getSelfNode();
       const response = await client.registerNode({
-        node: this.nodeToProto(selfNode),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        node: this.nodeToProto(selfNode) as any,
       });
 
       if (response.pending_approval) {
@@ -297,7 +298,8 @@ export class MembershipManager extends EventEmitter {
       const client = new ClusterClient(this.config.clientPool, this.leaderAddress);
       const response = await client.heartbeat({
         node_id: this.config.nodeId,
-        resources: selfNode.resources ? this.resourcesToProto(selfNode.resources) : undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        resources: selfNode.resources ? this.resourcesToProto(selfNode.resources) as any : undefined,
         active_tasks: [], // TODO: Get from task executor
       });
 
@@ -399,7 +401,22 @@ export class MembershipManager extends EventEmitter {
     grpc_port: number;
     role: string;
     status: string;
-    resources?: ReturnType<typeof this.resourcesToProto>;
+    resources?: {
+      cpu_cores: number;
+      memory_bytes: string;
+      memory_available_bytes: string;
+      gpus: Array<{
+        name: string;
+        memory_bytes: string;
+        memory_available_bytes: string;
+        utilization_percent: number;
+        in_use_for_gaming: boolean;
+      }>;
+      disk_bytes: string;
+      disk_available_bytes: string;
+      cpu_usage_percent: number;
+      gaming_detected: boolean;
+    };
     tags: string[];
     joined_at: string;
     last_seen: string;

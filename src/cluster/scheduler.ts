@@ -401,7 +401,7 @@ export class TaskScheduler extends EventEmitter {
     if (spec.requirements?.requiresGpu) {
       const availableGpu = resources.gpus.find(g => !g.inUseForGaming);
       if (availableGpu) {
-        const gpuAvailable = availableGpu.memoryAvailableBytes / availableGpu.memoryTotalBytes;
+        const gpuAvailable = availableGpu.memoryAvailableBytes / availableGpu.memoryBytes;
         score += gpuAvailable * 20;
       }
     }
@@ -423,7 +423,8 @@ export class TaskScheduler extends EventEmitter {
 
     try {
       const client = new AgentClient(this.config.clientPool, nodeAddress);
-      const stream = client.executeTask({ spec: this.specToProto(spec) });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const stream = client.executeTask({ spec: this.specToProto(spec) as any });
 
       let stdout: Buffer[] = [];
       let stderr: Buffer[] = [];

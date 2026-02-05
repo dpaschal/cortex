@@ -83,7 +83,6 @@ export class KubernetesAdapter extends EventEmitter {
     this.config = config;
   }
 
-  // Discover all available Kubernetes clusters from kubeconfig
   async discoverClusters(): Promise<K8sCluster[]> {
     const kc = new k8s.KubeConfig();
 
@@ -125,7 +124,6 @@ export class KubernetesAdapter extends EventEmitter {
     return clusters;
   }
 
-  // Get resources for a specific cluster
   async getClusterResources(context: string): Promise<K8sResources | null> {
     const kc = this.kubeconfigs.get(context);
     if (!kc) {
@@ -135,9 +133,8 @@ export class KubernetesAdapter extends EventEmitter {
     try {
       const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 
-      // Get nodes
-      const nodesResponse = await coreApi.listNode();
-      const nodes = nodesResponse.body.items;
+      const nodeList = await coreApi.listNode();
+      const nodes = nodeList.items;
 
       let totalCpu = 0;
       let totalMemory = 0;
@@ -149,20 +146,19 @@ export class KubernetesAdapter extends EventEmitter {
         const capacity = node.status?.capacity ?? {};
         const allocatable = node.status?.allocatable ?? {};
 
-        totalCpu += this.parseCpu(capacity.cpu ?? '0');
-        totalMemory += this.parseMemory(capacity.memory ?? '0');
-        allocatableCpu += this.parseCpu(allocatable.cpu ?? '0');
-        allocatableMemory += this.parseMemory(allocatable.memory ?? '0');
+        totalCpu += this.parseCpu(capacity['cpu'] ?? '0');
+        totalMemory += this.parseMemory(capacity['memory'] ?? '0');
+        allocatableCpu += this.parseCpu(allocatable['cpu'] ?? '0');
+        allocatableMemory += this.parseMemory(allocatable['memory'] ?? '0');
 
         const gpus = parseInt(capacity['nvidia.com/gpu'] ?? '0');
         gpuCount += gpus;
       }
 
-      // Count running pods
-      const podsResponse = await coreApi.listPodForAllNamespaces(
-        undefined, undefined, 'status.phase=Running'
-      );
-      const runningPods = podsResponse.body.items.length;
+      const podList = await coreApi.listPodForAllNamespaces();
+      const runningPods = podList.items.filter(
+        (p: k8s.V1Pod) => p.status?.phase === 'Running'
+      ).length;
 
       return {
         totalCpu,
@@ -178,7 +174,6 @@ export class KubernetesAdapter extends EventEmitter {
     }
   }
 
-  // Submit a job to a Kubernetes cluster
   async submitJob(context: string, spec: K8sJobSpec): Promise<string> {
     const kc = this.kubeconfigs.get(context);
     if (!kc) {
@@ -230,8 +225,8 @@ export class KubernetesAdapter extends EventEmitter {
     };
 
     try {
-      const response = await batchApi.createNamespacedJob({ namespace, body: job });
-      const jobName = response.body.metadata?.name ?? spec.name;
+      const createdJob = await batchApi.createNamespacedJob({ namespace, body: job });
+      const jobName = createdJob.metadata?.name ?? spec.name;
 
       this.config.logger.info('Submitted Kubernetes job', {
         context,
@@ -246,7 +241,6 @@ export class KubernetesAdapter extends EventEmitter {
     }
   }
 
-  // Get job status
   async getJobStatus(context: string, name: string, namespace: string = 'default'): Promise<K8sJobStatus | null> {
     const kc = this.kubeconfigs.get(context);
     if (!kc) {
@@ -255,8 +249,7 @@ export class KubernetesAdapter extends EventEmitter {
 
     try {
       const batchApi = kc.makeApiClient(k8s.BatchV1Api);
-      const response = await batchApi.readNamespacedJob({ name, namespace });
-      const job = response.body;
+      const job = await batchApi.readNamespacedJob({ name, namespace });
 
       return {
         name: job.metadata?.name ?? name,
@@ -266,7 +259,7 @@ export class KubernetesAdapter extends EventEmitter {
         failed: job.status?.failed ?? 0,
         startTime: job.status?.startTime ? new Date(job.status.startTime) : undefined,
         completionTime: job.status?.completionTime ? new Date(job.status.completionTime) : undefined,
-        conditions: (job.status?.conditions ?? []).map(c => ({
+        conditions: (job.status?.conditions ?? []).map((c: k8s.V1JobCondition) => ({
           type: c.type,
           status: c.status,
           reason: c.reason,
@@ -279,7 +272,6 @@ export class KubernetesAdapter extends EventEmitter {
     }
   }
 
-  // Get job logs
   async getJobLogs(context: string, name: string, namespace: string = 'default'): Promise<string | null> {
     const kc = this.kubeconfigs.get(context);
     if (!kc) {
@@ -289,36 +281,33 @@ export class KubernetesAdapter extends EventEmitter {
     try {
       const coreApi = kc.makeApiClient(k8s.CoreV1Api);
 
-      // Find pods for this job
-      const podsResponse = await coreApi.listNamespacedPod({
+      const podList = await coreApi.listNamespacedPod({
         namespace,
         labelSelector: `job-name=${name}`,
       });
 
-      const pods = podsResponse.body.items;
+      const pods = podList.items;
       if (pods.length === 0) {
         return null;
       }
 
-      // Get logs from first pod
       const podName = pods[0].metadata?.name;
       if (!podName) {
         return null;
       }
 
-      const logsResponse = await coreApi.readNamespacedPodLog({
+      const logs = await coreApi.readNamespacedPodLog({
         name: podName,
         namespace,
       });
 
-      return logsResponse.body;
+      return typeof logs === 'string' ? logs : JSON.stringify(logs);
     } catch (error) {
       this.config.logger.error('Failed to get job logs', { context, name, namespace, error });
       return null;
     }
   }
 
-  // Delete a job
   async deleteJob(context: string, name: string, namespace: string = 'default'): Promise<boolean> {
     const kc = this.kubeconfigs.get(context);
     if (!kc) {
@@ -341,7 +330,6 @@ export class KubernetesAdapter extends EventEmitter {
     }
   }
 
-  // Scale a deployment
   async scaleDeployment(
     context: string,
     name: string,
@@ -370,28 +358,26 @@ export class KubernetesAdapter extends EventEmitter {
     }
   }
 
-  // Helper: Probe a cluster context
   private async probeCluster(kc: k8s.KubeConfig, contextName: string): Promise<K8sCluster | null> {
     const contextConfig = this.createContextConfig(kc, contextName);
     const coreApi = contextConfig.makeApiClient(k8s.CoreV1Api);
 
-    // Try to list nodes to verify connectivity
-    const nodesResponse = await coreApi.listNode();
-    const nodes = nodesResponse.body.items;
+    const nodeList = await coreApi.listNode();
+    const nodes = nodeList.items;
 
-    const k8sNodes: K8sNode[] = nodes.map(node => {
+    const k8sNodes: K8sNode[] = nodes.map((node: k8s.V1Node) => {
       const capacity = node.status?.capacity ?? {};
       const allocatable = node.status?.allocatable ?? {};
       const conditions = node.status?.conditions ?? [];
-      const ready = conditions.some(c => c.type === 'Ready' && c.status === 'True');
+      const ready = conditions.some((c: k8s.V1NodeCondition) => c.type === 'Ready' && c.status === 'True');
 
       return {
         name: node.metadata?.name ?? 'unknown',
         ready,
-        cpuCapacity: this.parseCpu(capacity.cpu ?? '0'),
-        memoryCapacity: this.parseMemory(capacity.memory ?? '0'),
-        cpuAllocatable: this.parseCpu(allocatable.cpu ?? '0'),
-        memoryAllocatable: this.parseMemory(allocatable.memory ?? '0'),
+        cpuCapacity: this.parseCpu(capacity['cpu'] ?? '0'),
+        memoryCapacity: this.parseMemory(capacity['memory'] ?? '0'),
+        cpuAllocatable: this.parseCpu(allocatable['cpu'] ?? '0'),
+        memoryAllocatable: this.parseMemory(allocatable['memory'] ?? '0'),
         hasGpu: !!capacity['nvidia.com/gpu'],
         gpuCount: parseInt(capacity['nvidia.com/gpu'] ?? '0'),
         labels: node.metadata?.labels ?? {},
@@ -414,7 +400,6 @@ export class KubernetesAdapter extends EventEmitter {
     };
   }
 
-  // Helper: Create a KubeConfig for a specific context
   private createContextConfig(kc: k8s.KubeConfig, contextName: string): k8s.KubeConfig {
     const contextKc = new k8s.KubeConfig();
 
@@ -430,22 +415,17 @@ export class KubernetesAdapter extends EventEmitter {
       throw new Error(`Cluster not found for context: ${contextName}`);
     }
 
-    contextKc.loadFromClusterAndUser(cluster, user ?? {
-      name: 'default',
-    });
+    contextKc.loadFromClusterAndUser(cluster, user ?? { name: 'default' });
     contextKc.setCurrentContext(contextName);
 
     return contextKc;
   }
 
-  // Helper: Detect cluster type
   private detectClusterType(context: string, server: string, nodes: K8sNode[]): 'gke' | 'k8s' | 'k3s' | 'unknown' {
-    // GKE detection
     if (server.includes('.gke.') || server.includes('container.googleapis.com')) {
       return 'gke';
     }
 
-    // K3s detection
     const hasK3sLabel = nodes.some(n =>
       n.labels['node.kubernetes.io/instance-type']?.includes('k3s') ||
       n.labels['k3s.io/hostname'] !== undefined
@@ -454,7 +434,6 @@ export class KubernetesAdapter extends EventEmitter {
       return 'k3s';
     }
 
-    // Generic K8s
     if (nodes.length > 0) {
       return 'k8s';
     }
@@ -462,7 +441,6 @@ export class KubernetesAdapter extends EventEmitter {
     return 'unknown';
   }
 
-  // Helper: Parse CPU string to cores (float)
   private parseCpu(cpu: string): number {
     if (cpu.endsWith('m')) {
       return parseInt(cpu.slice(0, -1)) / 1000;
@@ -470,7 +448,6 @@ export class KubernetesAdapter extends EventEmitter {
     return parseFloat(cpu) || 0;
   }
 
-  // Helper: Parse memory string to bytes
   private parseMemory(memory: string): number {
     const units: Record<string, number> = {
       'Ki': 1024,
@@ -492,12 +469,10 @@ export class KubernetesAdapter extends EventEmitter {
     return parseInt(memory) || 0;
   }
 
-  // Get a discovered cluster
   getCluster(context: string): K8sCluster | undefined {
     return this.discoveredClusters.get(context);
   }
 
-  // List all discovered clusters
   listClusters(): K8sCluster[] {
     return Array.from(this.discoveredClusters.values());
   }
