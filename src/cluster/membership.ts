@@ -137,6 +137,16 @@ export class MembershipManager extends EventEmitter {
 
   // Join cluster
   async joinCluster(seedAddress: string): Promise<boolean> {
+    return this.joinClusterWithRedirect(seedAddress, 3);
+  }
+
+  // Join cluster with redirect handling
+  private async joinClusterWithRedirect(seedAddress: string, maxRedirects: number): Promise<boolean> {
+    if (maxRedirects <= 0) {
+      this.config.logger.warn('Too many redirects during cluster join');
+      return false;
+    }
+
     try {
       const client = new ClusterClient(this.config.clientPool, seedAddress);
 
@@ -176,6 +186,15 @@ export class MembershipManager extends EventEmitter {
 
         this.emit('joined', response.cluster_id);
         return true;
+      }
+
+      // Not approved and not pending - check for redirect to leader
+      if (response.leader_address && response.leader_address !== seedAddress) {
+        this.config.logger.info('Redirecting to leader', {
+          from: seedAddress,
+          to: response.leader_address,
+        });
+        return this.joinClusterWithRedirect(response.leader_address, maxRedirects - 1);
       }
 
       return false;
