@@ -202,7 +202,7 @@ export class RaftNode extends EventEmitter {
     entries: LogEntry[];
     leaderCommit: number;
   }): { term: number; success: boolean; matchIndex: number } {
-    this.config.logger.debug('Received AppendEntries', {
+    this.config.logger.info('Received AppendEntries', {
       term: request.term,
       leaderId: request.leaderId,
       entriesCount: request.entries.length,
