@@ -214,14 +214,24 @@ export class MembershipManager extends EventEmitter {
   }> {
     if (!this.config.raft.isLeader()) {
       // Redirect to leader - try to get fresh leader address
-      let leaderAddr = this.leaderAddress || '';
+      let leaderAddr = '';
 
       // Try to get leader info from Raft state
       const leaderId = this.config.raft.getLeaderId();
       if (leaderId && leaderId !== this.config.nodeId) {
         const leaderNode = this.nodes.get(leaderId);
-        if (leaderNode) {
+        // Only redirect to leader if it's online (not offline or draining)
+        if (leaderNode && leaderNode.status === 'active') {
           leaderAddr = `${leaderNode.tailscaleIp}:${leaderNode.grpcPort}`;
+        }
+      }
+
+      // Fallback to cached leader address only if we couldn't get a fresh one
+      // and verify it's not the requesting node's address
+      if (!leaderAddr && this.leaderAddress) {
+        const requestingAddr = `${node.tailscaleIp}:${node.grpcPort}`;
+        if (this.leaderAddress !== requestingAddr) {
+          leaderAddr = this.leaderAddress;
         }
       }
 
