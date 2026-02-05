@@ -444,4 +444,103 @@ describe('MembershipManager', () => {
       manager.stop();
     });
   });
+
+  describe('Failure Detection', () => {
+    it('should not mark self as offline', () => {
+      const { manager } = createTestManager({ heartbeatTimeoutMs: 100 });
+
+      // Set self lastSeen to old time
+      const selfNode = manager.getSelfNode();
+      selfNode.lastSeen = Date.now() - 200;
+
+      manager.start();
+      vi.advanceTimersByTime(5000);
+      manager.stop();
+
+      expect(manager.getSelfNode().status).toBe('active');
+    });
+
+    it('should mark node as offline when lastSeen exceeds timeout', () => {
+      const { manager, mockRaft } = createTestManager({ heartbeatTimeoutMs: 15000 });
+
+      // Simulate a committed node_join to add a peer
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      const peerNode = manager.getNode('node-2');
+      expect(peerNode).toBeDefined();
+      peerNode!.lastSeen = Date.now() - 20000; // 20s ago
+
+      manager.start();
+      vi.advanceTimersByTime(5000);
+      manager.stop();
+
+      expect(manager.getNode('node-2')?.status).toBe('offline');
+    });
+
+    it('should emit nodeOffline event for timed-out nodes', () => {
+      const { manager, mockRaft } = createTestManager({ heartbeatTimeoutMs: 15000 });
+
+      // Add a peer via Raft commit
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      const offlineEvents: NodeInfo[] = [];
+      manager.on('nodeOffline', (node: NodeInfo) => offlineEvents.push(node));
+
+      const peerNode = manager.getNode('node-2');
+      peerNode!.lastSeen = Date.now() - 20000;
+
+      manager.start();
+      vi.advanceTimersByTime(5000);
+      manager.stop();
+
+      expect(offlineEvents).toHaveLength(1);
+      expect(offlineEvents[0].nodeId).toBe('node-2');
+    });
+
+    it('should not mark recently-seen nodes as offline', () => {
+      const { manager, mockRaft } = createTestManager({ heartbeatTimeoutMs: 15000 });
+
+      // Add a peer via Raft commit
+      const entryHandler = mockRaft._handlers.get('entryCommitted');
+      entryHandler?.({
+        type: 'node_join',
+        data: Buffer.from(JSON.stringify({
+          nodeId: 'node-2',
+          hostname: 'peer-host',
+          tailscaleIp: '100.0.0.2',
+          grpcPort: 50051,
+          tags: [],
+        })),
+      });
+
+      const peerNode = manager.getNode('node-2');
+      peerNode!.lastSeen = Date.now() - 5000; // 5s ago, within timeout
+
+      manager.start();
+      vi.advanceTimersByTime(5000);
+      manager.stop();
+
+      expect(manager.getNode('node-2')?.status).toBe('active');
+    });
+  });
 });
