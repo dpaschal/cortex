@@ -202,4 +202,64 @@ describe('MembershipManager', () => {
       expect(result).toBe(false);
     });
   });
+
+  describe('Handle Join Request', () => {
+    const createPendingNode = (): NodeInfo => ({
+      nodeId: 'new-node',
+      hostname: 'new-host',
+      tailscaleIp: '100.0.0.3',
+      grpcPort: 50051,
+      role: 'follower',
+      status: 'pending_approval',
+      resources: null,
+      tags: [],
+      joinedAt: Date.now(),
+      lastSeen: Date.now(),
+    });
+
+    it('should redirect to leader when not leader', async () => {
+      const { manager, mockRaft } = createTestManager();
+      mockRaft.isLeader.mockReturnValue(false);
+
+      const result = await manager.handleJoinRequest(createPendingNode());
+
+      expect(result.approved).toBe(false);
+      expect(result.pendingApproval).toBe(false);
+    });
+
+    it('should auto-approve when autoApprove config is true', async () => {
+      const { manager, mockRaft } = createTestManager({ autoApprove: true });
+      mockRaft.isLeader.mockReturnValue(true);
+
+      const result = await manager.handleJoinRequest(createPendingNode());
+
+      expect(result.approved).toBe(true);
+      expect(result.pendingApproval).toBe(false);
+    });
+
+    it('should add to pendingApprovals when manual approval required', async () => {
+      const { manager, mockRaft } = createTestManager({ autoApprove: false });
+      mockRaft.isLeader.mockReturnValue(true);
+
+      const pendingNode = createPendingNode();
+      await manager.handleJoinRequest(pendingNode);
+
+      const pending = manager.getPendingApprovals();
+      expect(pending).toHaveLength(1);
+      expect(pending[0].nodeId).toBe('new-node');
+    });
+
+    it('should emit nodeJoinRequest event for pending nodes', async () => {
+      const { manager, mockRaft } = createTestManager({ autoApprove: false });
+      mockRaft.isLeader.mockReturnValue(true);
+
+      const events: NodeInfo[] = [];
+      manager.on('nodeJoinRequest', (node: NodeInfo) => events.push(node));
+
+      await manager.handleJoinRequest(createPendingNode());
+
+      expect(events).toHaveLength(1);
+      expect(events[0].nodeId).toBe('new-node');
+    });
+  });
 });
