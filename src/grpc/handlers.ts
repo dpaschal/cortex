@@ -192,6 +192,7 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
     ) => {
       try {
         const { spec } = call.request;
+        logger.info('Received SubmitTask', { taskId: spec?.task_id, type: spec?.type });
 
         const result = await scheduler.submit({
           taskId: spec.task_id,

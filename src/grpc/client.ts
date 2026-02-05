@@ -36,7 +36,7 @@ export class GrpcClientPool extends EventEmitter {
 
   async loadProto(): Promise<void> {
     this.packageDefinition = await protoLoader.load(PROTO_PATH, {
-      keepCase: true,
+      keepCase: false,  // Use camelCase for JS-idiomatic field names
       longs: String,
       enums: String,
       defaults: true,
@@ -214,15 +214,15 @@ export class ClusterClient {
   }
 
   async getTaskStatus(taskId: string): Promise<TaskStatus> {
-    return this.pool.call(this.client, 'GetTaskStatus', { task_id: taskId });
+    return this.pool.call(this.client, 'GetTaskStatus', { taskId });
   }
 
   async cancelTask(taskId: string): Promise<CancelTaskResponse> {
-    return this.pool.call(this.client, 'CancelTask', { task_id: taskId });
+    return this.pool.call(this.client, 'CancelTask', { taskId });
   }
 
   streamTaskOutput(taskId: string): grpc.ClientReadableStream<TaskOutput> {
-    return this.pool.callStream(this.client, 'StreamTaskOutput', { task_id: taskId });
+    return this.pool.callStream(this.client, 'StreamTaskOutput', { taskId });
   }
 
   async registerSession(request: RegisterSessionRequest): Promise<RegisterSessionResponse> {
@@ -348,7 +348,7 @@ export class AgentClient {
 
   async cancelExecution(taskId: string): Promise<CancelExecutionResponse> {
     await this.pool.waitForReady(this.address, 5000);
-    return this.pool.call(this.client, 'CancelExecution', { task_id: taskId });
+    return this.pool.call(this.client, 'CancelExecution', { taskId });
   }
 }
 
