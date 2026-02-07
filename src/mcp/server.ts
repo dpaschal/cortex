@@ -14,6 +14,8 @@ import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
 import { createTools, ToolHandler } from './tools.js';
 import { createTimelineTools } from './timeline-tools.js';
 import { TimelineDB } from './timeline-db.js';
+import { createNetworkTools } from './network-tools.js';
+import { NetworkDB } from './network-db.js';
 
 export interface McpServerConfig {
   logger: Logger;
@@ -30,6 +32,7 @@ export class ClusterMcpServer {
   private server: Server;
   private toolHandlers: Map<string, ToolHandler>;
   private timelineDb: TimelineDB | null = null;
+  private networkDb: NetworkDB | null = null;
 
   constructor(config: McpServerConfig) {
     this.config = config;
@@ -68,6 +71,16 @@ export class ClusterMcpServer {
     this.timelineDb = db;
 
     for (const [name, handler] of timelineTools) {
+      clusterTools.set(name, handler);
+    }
+
+    // Add network tools
+    const { tools: networkTools, db: netDb } = createNetworkTools({
+      logger: this.config.logger,
+    });
+    this.networkDb = netDb;
+
+    for (const [name, handler] of networkTools) {
       clusterTools.set(name, handler);
     }
 
@@ -201,6 +214,9 @@ export class ClusterMcpServer {
   async stop(): Promise<void> {
     if (this.timelineDb) {
       await this.timelineDb.close();
+    }
+    if (this.networkDb) {
+      await this.networkDb.close();
     }
     await this.server.close();
     this.config.logger.info('MCP server stopped');
