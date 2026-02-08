@@ -95,7 +95,8 @@ export class ContextDB {
 
     // Default: entries updated within last 7 days OR pinned
     const sinceDays = params.since_days ?? 7;
-    conditions.push(`(updated_at > NOW() - INTERVAL '${sinceDays} days' OR pinned = TRUE)`);
+    conditions.push(`(updated_at > NOW() - make_interval(days => $${paramIdx++}) OR pinned = TRUE)`);
+    values.push(sinceDays);
 
     if (params.category) {
       conditions.push(`category = $${paramIdx++}`);
@@ -117,8 +118,9 @@ export class ContextDB {
       SELECT * FROM timeline.context
       WHERE ${conditions.join(' AND ')}
       ORDER BY pinned DESC, updated_at DESC
-      LIMIT ${limit}
+      LIMIT $${paramIdx}
     `;
+    values.push(limit);
 
     const result = await this.pool.query<ContextEntry>(query, values);
     return result.rows;
