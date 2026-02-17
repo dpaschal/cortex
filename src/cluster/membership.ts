@@ -61,6 +61,9 @@ export class MembershipManager extends EventEmitter {
 
   private heartbeatMs: number;
   private heartbeatTimeoutMs: number;
+  private consecutiveHeartbeatFailures: number = 0;
+  private rejoinInProgress: boolean = false;
+  private static readonly REJOIN_FAILURE_THRESHOLD = 3;
 
   constructor(config: MembershipConfig) {
     super();
@@ -197,6 +200,9 @@ export class MembershipManager extends EventEmitter {
             nodeInfo.role !== 'worker'
           );
         }
+
+        // Delay elections to let leader sync log entries to us
+        this.config.raft.delayNextElection(10000);
 
         this.config.logger.info('Joined cluster', {
           clusterId: response.cluster_id,
@@ -358,10 +364,12 @@ export class MembershipManager extends EventEmitter {
     // to keep its own lastSeen fresh so it doesn't appear stale
     if (this.config.raft.isLeader()) {
       this.getSelfNode().lastSeen = Date.now();
+      this.consecutiveHeartbeatFailures = 0;
       return;
     }
 
     if (!this.leaderAddress) {
+      this.consecutiveHeartbeatFailures = 0;
       return;
     }
 
@@ -379,6 +387,7 @@ export class MembershipManager extends EventEmitter {
       if (response.acknowledged) {
         selfNode.lastSeen = Date.now();
         this.leaderAddress = response.leader_address || this.leaderAddress;
+        this.consecutiveHeartbeatFailures = 0;
 
         // Update leader role from heartbeat response
         if (response.leader_id) {
@@ -396,8 +405,37 @@ export class MembershipManager extends EventEmitter {
         }
       }
     } catch (error) {
-      this.config.logger.debug('Heartbeat failed', { error });
+      this.consecutiveHeartbeatFailures++;
+      this.config.logger.debug('Heartbeat failed', {
+        error,
+        consecutiveFailures: this.consecutiveHeartbeatFailures,
+      });
+
+      if (
+        this.consecutiveHeartbeatFailures >= MembershipManager.REJOIN_FAILURE_THRESHOLD &&
+        !this.rejoinInProgress
+      ) {
+        this.config.logger.warn('Heartbeat failures exceeded threshold, requesting rejoin', {
+          consecutiveFailures: this.consecutiveHeartbeatFailures,
+          threshold: MembershipManager.REJOIN_FAILURE_THRESHOLD,
+        });
+        this.emit('rejoinNeeded');
+      }
     }
+  }
+
+  /**
+   * Reset heartbeat failure counter after a successful rejoin.
+   */
+  resetHeartbeatFailures(): void {
+    this.consecutiveHeartbeatFailures = 0;
+  }
+
+  /**
+   * Mark rejoin as in progress to prevent duplicate rejoin attempts.
+   */
+  setRejoinInProgress(inProgress: boolean): void {
+    this.rejoinInProgress = inProgress;
   }
 
   // Failure detection — only the leader has authoritative liveness info

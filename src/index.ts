@@ -288,6 +288,9 @@ export class ClaudeCluster extends EventEmitter {
         this.logger.info('MCP server ready, joining cluster in background');
         this.emit('started');
 
+        // Listen for rejoin requests from membership (sleep/wake recovery)
+        this.membership!.on('rejoinNeeded', () => this.rejoinCluster());
+
         // Join cluster in background — don't block MCP
         this.joinOrCreateCluster().catch((error) => {
           this.logger.error('Background cluster join failed', { error });
@@ -295,6 +298,10 @@ export class ClaudeCluster extends EventEmitter {
       } else {
         // Normal mode: join cluster first, then init MCP
         await this.joinOrCreateCluster();
+
+        // Listen for rejoin requests from membership (sleep/wake recovery)
+        this.membership!.on('rejoinNeeded', () => this.rejoinCluster());
+
         await this.initializeMcp();
         this.running = true;
         this.logger.info('Claude Cluster started successfully');
@@ -634,6 +641,36 @@ export class ClaudeCluster extends EventEmitter {
 
     // Start new cluster only after exhausting all join attempts
     this.logger.info('Starting new cluster as leader');
+  }
+
+  /**
+   * Rejoin the cluster after connectivity loss (e.g., laptop sleep/wake).
+   * Pauses elections to prevent split-brain, waits for network, re-joins, then resumes.
+   */
+  private async rejoinCluster(): Promise<void> {
+    if (!this.membership || !this.raft) return;
+
+    this.membership.setRejoinInProgress(true);
+    this.logger.info('Attempting cluster rejoin after connectivity loss');
+
+    try {
+      this.raft.pauseElections();
+      await this.waitForNetworkReady();
+      const joined = await this.joinClusterWithRetry();
+      this.raft.resumeElections();
+
+      if (joined) {
+        this.logger.info('Successfully rejoined cluster');
+        this.membership.resetHeartbeatFailures();
+      } else {
+        this.logger.warn('Rejoin failed — will retry on next heartbeat failure cycle');
+      }
+    } catch (error) {
+      this.logger.error('Rejoin attempt threw an error', { error });
+      this.raft.resumeElections();
+    } finally {
+      this.membership.setRejoinInProgress(false);
+    }
   }
 
   /**

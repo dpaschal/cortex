@@ -26,6 +26,8 @@ const createMockRaft = () => {
     appendEntry: vi.fn().mockResolvedValue({ success: true, index: 1 }),
     addPeer: vi.fn(),
     removePeer: vi.fn(),
+    delayNextElection: vi.fn(),
+    getLeaderId: vi.fn().mockReturnValue(null),
     on: vi.fn((event: string, handler: Function) => {
       handlers.set(event, handler);
     }),
