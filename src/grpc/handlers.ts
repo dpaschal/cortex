@@ -19,7 +19,7 @@ export interface ServiceHandlersConfig {
 }
 
 export function createClusterServiceHandlers(config: ServiceHandlersConfig): grpc.UntypedServiceImplementation {
-  const { logger, membership, scheduler, stateManager } = config;
+  const { logger, membership, raft, scheduler, stateManager } = config;
 
   return {
     // Node registration
@@ -103,6 +103,16 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
       try {
         const { node_id, resources } = call.request;
 
+        // Always update lastSeen on heartbeat, even without resources
+        const node = membership.getNode(node_id);
+        if (node) {
+          node.lastSeen = Date.now();
+          if (node.status === 'offline') {
+            node.status = 'active';
+            logger.info('Node recovered via heartbeat', { nodeId: node_id });
+          }
+        }
+
         if (resources) {
           membership.updateNodeResources(node_id, {
             cpuCores: resources.cpu_cores,
@@ -128,6 +138,7 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
           acknowledged: true,
           leader_address: leaderAddress || '',
           pending_tasks: [],
+          leader_id: raft.getLeaderId() || '',
         });
       } catch (error) {
         logger.error('Heartbeat failed', { error });
@@ -157,6 +168,22 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
             grpc_port: n.grpcPort,
             role: `NODE_ROLE_${n.role.toUpperCase()}`,
             status: `NODE_STATUS_${n.status.toUpperCase()}`,
+            resources: n.resources ? {
+              cpu_cores: n.resources.cpuCores,
+              memory_bytes: n.resources.memoryBytes.toString(),
+              memory_available_bytes: n.resources.memoryAvailableBytes.toString(),
+              gpus: n.resources.gpus.map((g: any) => ({
+                name: g.name,
+                memory_bytes: g.memoryBytes.toString(),
+                memory_available_bytes: g.memoryAvailableBytes.toString(),
+                utilization_percent: g.utilizationPercent,
+                in_use_for_gaming: g.inUseForGaming,
+              })),
+              disk_bytes: n.resources.diskBytes.toString(),
+              disk_available_bytes: n.resources.diskAvailableBytes.toString(),
+              cpu_usage_percent: n.resources.cpuUsagePercent,
+              gaming_detected: n.resources.gamingDetected,
+            } : undefined,
             tags: n.tags,
             joined_at: n.joinedAt.toString(),
             last_seen: n.lastSeen.toString(),

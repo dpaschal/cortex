@@ -130,6 +130,7 @@ message HeartbeatResponse {
   bool acknowledged = 1;
   string leader_address = 2;
   repeated PendingTask pending_tasks = 3;
+  string leader_id = 4;
 }
 
 message PendingTask {

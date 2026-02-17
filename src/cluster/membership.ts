@@ -90,6 +90,26 @@ export class MembershipManager extends EventEmitter {
     config.raft.on('entryCommitted', (entry: { type: LogEntryType; data: Buffer }) => {
       this.handleCommittedEntry(entry);
     });
+
+    // Update leaderAddress and node roles when Raft discovers a new leader
+    config.raft.on('leaderChanged', (newLeaderId: string) => {
+      // Demote any node currently marked as leader (except self — handled by stateChange)
+      for (const node of this.nodes.values()) {
+        if (node.role === 'leader' && node.nodeId !== config.nodeId) {
+          node.role = 'follower';
+        }
+      }
+      // Promote new leader
+      const leaderNode = this.nodes.get(newLeaderId);
+      if (leaderNode) {
+        leaderNode.role = 'leader';
+        this.leaderAddress = `${leaderNode.tailscaleIp}:${leaderNode.grpcPort}`;
+        this.config.logger.info('Leader address updated', {
+          leaderId: newLeaderId,
+          leaderAddress: this.leaderAddress,
+        });
+      }
+    });
   }
 
   start(): void {
@@ -334,7 +354,14 @@ export class MembershipManager extends EventEmitter {
 
   // Heartbeat
   private async sendHeartbeat(): Promise<void> {
-    if (!this.leaderAddress || this.config.raft.isLeader()) {
+    // Leader doesn't send gRPC heartbeats to itself, but still needs
+    // to keep its own lastSeen fresh so it doesn't appear stale
+    if (this.config.raft.isLeader()) {
+      this.getSelfNode().lastSeen = Date.now();
+      return;
+    }
+
+    if (!this.leaderAddress) {
       return;
     }
 
@@ -352,14 +379,41 @@ export class MembershipManager extends EventEmitter {
       if (response.acknowledged) {
         selfNode.lastSeen = Date.now();
         this.leaderAddress = response.leader_address || this.leaderAddress;
+
+        // Update leader role from heartbeat response
+        if (response.leader_id) {
+          // Demote any node currently marked as leader (except self)
+          for (const node of this.nodes.values()) {
+            if (node.role === 'leader' && node.nodeId !== this.config.nodeId && node.nodeId !== response.leader_id) {
+              node.role = 'follower';
+            }
+          }
+          // Promote the actual leader
+          const leaderNode = this.nodes.get(response.leader_id);
+          if (leaderNode) {
+            leaderNode.role = 'leader';
+          }
+        }
       }
     } catch (error) {
       this.config.logger.debug('Heartbeat failed', { error });
     }
   }
 
-  // Failure detection
+  // Failure detection — only the leader has authoritative liveness info
+  // (followers send heartbeats to the leader, not to each other)
   private detectFailures(): void {
+    if (!this.config.raft.isLeader()) {
+      // Followers don't have heartbeat data for other followers.
+      // Keep all known peers' lastSeen fresh to avoid false positives.
+      // The leader's authoritative view is available via GetClusterState.
+      for (const node of this.nodes.values()) {
+        if (node.nodeId === this.config.nodeId) continue;
+        node.lastSeen = Date.now();
+      }
+      return;
+    }
+
     const now = Date.now();
 
     for (const node of this.nodes.values()) {
@@ -369,6 +423,10 @@ export class MembershipManager extends EventEmitter {
         node.status = 'offline';
         this.config.logger.warn('Node appears offline', { nodeId: node.nodeId });
         this.emit('nodeOffline', node);
+      } else if (node.status === 'offline' && now - node.lastSeen <= this.heartbeatTimeoutMs) {
+        node.status = 'active';
+        this.config.logger.info('Node recovered', { nodeId: node.nodeId });
+        this.emit('nodeRecovered', node);
       }
     }
   }
@@ -420,7 +478,9 @@ export class MembershipManager extends EventEmitter {
     };
 
     this.nodes.set(data.nodeId, node);
-    this.config.raft.addPeer(data.nodeId, `${data.tailscaleIp}:${data.grpcPort}`, true);
+    // MCP proxy nodes (suffixed with -mcp) are non-voting observers
+    const isVoting = !data.nodeId.endsWith('-mcp');
+    this.config.raft.addPeer(data.nodeId, `${data.tailscaleIp}:${data.grpcPort}`, isVoting);
 
     this.config.logger.info('Node joined cluster', { nodeId: data.nodeId });
     this.emit('nodeJoined', node);

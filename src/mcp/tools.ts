@@ -3,6 +3,7 @@ import { ClusterStateManager, ClaudeSession, ContextEntry, ContextType, ContextV
 import { MembershipManager, NodeInfo } from '../cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus, TaskType } from '../cluster/scheduler.js';
 import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
+import { ClusterClient, GrpcClientPool } from '../grpc/client.js';
 import { randomUUID } from 'crypto';
 
 export interface ToolHandler {
@@ -23,10 +24,78 @@ export interface ToolsConfig {
   sessionId: string;
   nodeId: string;
   logger: Logger;
+  clientPool?: GrpcClientPool;
 }
 
 export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
   const tools = new Map<string, ToolHandler>();
+
+  // Helper: fetch authoritative cluster state from leader via gRPC.
+  // Falls back to local state if leader is unreachable or we are the leader.
+  async function fetchLeaderState(): Promise<{
+    nodes: Array<{
+      nodeId: string; hostname: string; tailscaleIp: string; grpcPort: number;
+      role: string; status: string; resources: any; tags: string[];
+      joinedAt: number; lastSeen: number;
+    }>;
+    leaderId: string | null;
+    term: number;
+    clusterId: string;
+    activeTasks: number;
+    queuedTasks: number;
+  } | null> {
+    const leaderAddr = config.membership.getLeaderAddress();
+    if (!leaderAddr || !config.clientPool) return null;
+
+    // Don't query self
+    const selfNode = config.membership.getSelfNode();
+    const selfAddr = `${selfNode.tailscaleIp}:${selfNode.grpcPort}`;
+    if (leaderAddr === selfAddr) return null;
+
+    try {
+      const client = new ClusterClient(config.clientPool, leaderAddr);
+      const state = await client.getClusterState();
+
+      // Parse proto response into usable format
+      return {
+        nodes: (state.nodes || []).map((n: any) => ({
+          nodeId: n.node_id,
+          hostname: n.hostname,
+          tailscaleIp: n.tailscale_ip,
+          grpcPort: n.grpc_port,
+          role: (n.role || '').replace('NODE_ROLE_', '').toLowerCase(),
+          status: (n.status || '').replace('NODE_STATUS_', '').toLowerCase(),
+          resources: n.resources ? {
+            cpuCores: n.resources.cpu_cores,
+            memoryBytes: parseInt(n.resources.memory_bytes),
+            memoryAvailableBytes: parseInt(n.resources.memory_available_bytes),
+            gpus: (n.resources.gpus || []).map((g: any) => ({
+              name: g.name,
+              memoryBytes: parseInt(g.memory_bytes),
+              memoryAvailableBytes: parseInt(g.memory_available_bytes),
+              utilizationPercent: g.utilization_percent,
+              inUseForGaming: g.in_use_for_gaming,
+            })),
+            diskBytes: parseInt(n.resources.disk_bytes),
+            diskAvailableBytes: parseInt(n.resources.disk_available_bytes),
+            cpuUsagePercent: n.resources.cpu_usage_percent,
+            gamingDetected: n.resources.gaming_detected,
+          } : null,
+          tags: n.tags || [],
+          joinedAt: parseInt(n.joined_at),
+          lastSeen: parseInt(n.last_seen),
+        })),
+        leaderId: state.leader_id || null,
+        term: parseInt(state.term) || 0,
+        clusterId: state.cluster_id || '',
+        activeTasks: state.active_tasks || 0,
+        queuedTasks: state.queued_tasks || 0,
+      };
+    } catch (error) {
+      config.logger.debug('Failed to fetch state from leader, using local state', { error });
+      return null;
+    }
+  }
 
   // cluster_status - Get current cluster state
   tools.set('cluster_status', {
@@ -36,6 +105,46 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       properties: {},
     },
     handler: async () => {
+      // Try to get authoritative state from leader
+      const leaderState = await fetchLeaderState();
+      if (leaderState) {
+        // Filter out MCP proxy nodes from the response
+        const realNodes = leaderState.nodes.filter(n => !n.nodeId.endsWith('-mcp'));
+        const calcTotal = (nodes: typeof realNodes) => {
+          let cpuCores = 0, memoryBytes = 0, gpuCount = 0, gpuMemoryBytes = 0;
+          for (const n of nodes) {
+            if (n.resources && n.status === 'active') {
+              cpuCores += n.resources.cpuCores;
+              memoryBytes += n.resources.memoryBytes;
+              gpuCount += n.resources.gpus.length;
+              gpuMemoryBytes += n.resources.gpus.reduce((sum: number, g: any) => sum + g.memoryBytes, 0);
+            }
+          }
+          return { cpuCores, memoryBytes, gpuCount, gpuMemoryBytes };
+        };
+        const calcAvailable = (nodes: typeof realNodes) => {
+          let cpuCores = 0, memoryBytes = 0, gpuCount = 0, gpuMemoryBytes = 0;
+          for (const n of nodes) {
+            if (n.resources && n.status === 'active') {
+              cpuCores += n.resources.cpuCores * (1 - n.resources.cpuUsagePercent / 100);
+              memoryBytes += n.resources.memoryAvailableBytes;
+              gpuCount += n.resources.gpus.length;
+              gpuMemoryBytes += n.resources.gpus.reduce((sum: number, g: any) => sum + g.memoryAvailableBytes, 0);
+            }
+          }
+          return { cpuCores, memoryBytes, gpuCount, gpuMemoryBytes };
+        };
+        return {
+          clusterId: leaderState.clusterId,
+          leaderId: leaderState.leaderId,
+          term: leaderState.term,
+          nodes: realNodes,
+          totalResources: calcTotal(realNodes),
+          availableResources: calcAvailable(realNodes),
+          activeTasks: leaderState.activeTasks,
+          queuedTasks: leaderState.queuedTasks,
+        };
+      }
       return config.stateManager.getState();
     },
   });
@@ -54,32 +163,65 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       },
     },
     handler: async (args) => {
-      let nodes = config.membership.getAllNodes();
+      // Try to get authoritative state from leader
+      const leaderState = await fetchLeaderState();
+      let nodes: Array<{ nodeId: string; hostname: string; ip: string; role: string; status: string; resources: any }>;
 
-      if (args.status) {
-        nodes = nodes.filter(n => n.status === args.status);
+      if (leaderState) {
+        // Filter out MCP proxy nodes
+        let leaderNodes = leaderState.nodes.filter(n => !n.nodeId.endsWith('-mcp'));
+        if (args.status) {
+          leaderNodes = leaderNodes.filter(n => n.status === args.status);
+        }
+        nodes = leaderNodes.map(n => ({
+          nodeId: n.nodeId,
+          hostname: n.hostname,
+          ip: n.tailscaleIp,
+          role: n.role,
+          status: n.status,
+          resources: n.resources ? {
+            cpuCores: n.resources.cpuCores,
+            memoryGb: (n.resources.memoryBytes / (1024 ** 3)).toFixed(1),
+            memoryAvailableGb: (n.resources.memoryAvailableBytes / (1024 ** 3)).toFixed(1),
+            cpuUsagePercent: n.resources.cpuUsagePercent.toFixed(1),
+            gpus: n.resources.gpus.map((g: any) => ({
+              name: g.name,
+              memoryGb: (g.memoryBytes / (1024 ** 3)).toFixed(1),
+              utilization: g.utilizationPercent,
+              gamingActive: g.inUseForGaming,
+            })),
+            gamingDetected: n.resources.gamingDetected,
+          } : null,
+        }));
+      } else {
+        // Fallback to local membership
+        let localNodes = config.membership.getAllNodes();
+        if (args.status) {
+          localNodes = localNodes.filter(n => n.status === args.status);
+        }
+        nodes = localNodes.filter(n => !n.nodeId.endsWith('-mcp')).map(n => ({
+          nodeId: n.nodeId,
+          hostname: n.hostname,
+          ip: n.tailscaleIp,
+          role: n.role,
+          status: n.status,
+          resources: n.resources ? {
+            cpuCores: n.resources.cpuCores,
+            memoryGb: (n.resources.memoryBytes / (1024 ** 3)).toFixed(1),
+            memoryAvailableGb: (n.resources.memoryAvailableBytes / (1024 ** 3)).toFixed(1),
+            cpuUsagePercent: n.resources.cpuUsagePercent.toFixed(1),
+            gpus: n.resources.gpus.map(g => ({
+              name: g.name,
+              memoryGb: (g.memoryBytes / (1024 ** 3)).toFixed(1),
+              utilization: g.utilizationPercent,
+              gamingActive: g.inUseForGaming,
+            })),
+            gamingDetected: n.resources.gamingDetected,
+          } : null,
+        }));
       }
 
-      return nodes.map(n => ({
-        nodeId: n.nodeId,
-        hostname: n.hostname,
-        ip: n.tailscaleIp,
-        role: n.role,
-        status: n.status,
-        resources: n.resources ? {
-          cpuCores: n.resources.cpuCores,
-          memoryGb: (n.resources.memoryBytes / (1024 ** 3)).toFixed(1),
-          memoryAvailableGb: (n.resources.memoryAvailableBytes / (1024 ** 3)).toFixed(1),
-          cpuUsagePercent: n.resources.cpuUsagePercent.toFixed(1),
-          gpus: n.resources.gpus.map(g => ({
-            name: g.name,
-            memoryGb: (g.memoryBytes / (1024 ** 3)).toFixed(1),
-            utilization: g.utilizationPercent,
-            gamingActive: g.inUseForGaming,
-          })),
-          gamingDetected: n.resources.gamingDetected,
-        } : null,
-      }));
+      return nodes;
     },
   });
 

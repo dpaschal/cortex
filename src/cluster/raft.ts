@@ -1,4 +1,6 @@
 import { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Logger } from 'winston';
 import { RaftClient, GrpcClientPool } from '../grpc/client.js';
 
@@ -28,6 +30,8 @@ export interface RaftConfig {
   electionTimeoutMaxMs?: number;
   heartbeatIntervalMs?: number;
   maxLogEntriesPerAppend?: number;
+  nonVoting?: boolean; // If true, node never starts elections (observer only)
+  dataDir?: string; // Directory for persistent state (e.g., ~/.claudecluster)
 }
 
 export interface PeerInfo {
@@ -76,8 +80,9 @@ export class RaftNode extends EventEmitter {
   start(): void {
     if (this.running) return;
     this.running = true;
+    this.loadState();
     this.becomeFollower(this.currentTerm);
-    this.config.logger.info('Raft node started', { nodeId: this.config.nodeId });
+    this.config.logger.info('Raft node started', { nodeId: this.config.nodeId, term: this.currentTerm });
   }
 
   stop(): void {
@@ -186,6 +191,7 @@ export class RaftNode extends EventEmitter {
       if (logOk && (this.votedFor === null || this.votedFor === request.candidateId)) {
         voteGranted = true;
         this.votedFor = request.candidateId;
+        this.saveState();
         this.resetElectionTimeout();
       }
     }
@@ -218,8 +224,14 @@ export class RaftNode extends EventEmitter {
     }
 
     // Valid AppendEntries from leader
+    const previousLeaderId = this.leaderId;
     this.leaderId = request.leaderId;
     this.resetElectionTimeout();
+
+    // Notify membership manager when leader changes
+    if (previousLeaderId !== request.leaderId) {
+      this.emit('leaderChanged', request.leaderId);
+    }
 
     // Check log consistency
     if (request.prevLogIndex > 0) {
@@ -259,6 +271,7 @@ export class RaftNode extends EventEmitter {
     this.currentTerm = term;
     this.votedFor = null;
     this.clearTimers();
+    this.saveState();
     this.resetElectionTimeout();
 
     this.config.logger.info('Became follower', { term });
@@ -270,6 +283,7 @@ export class RaftNode extends EventEmitter {
     this.currentTerm++;
     this.votedFor = this.config.nodeId;
     this.leaderId = null;
+    this.saveState();
 
     this.config.logger.info('Became candidate', { term: this.currentTerm });
     this.emit('stateChange', 'candidate', this.currentTerm);
@@ -450,6 +464,11 @@ export class RaftNode extends EventEmitter {
   private resetElectionTimeout(): void {
     this.clearElectionTimeout();
 
+    // Non-voting nodes never start elections
+    if (this.config.nonVoting) {
+      return;
+    }
+
     // Don't start election timer if elections are paused (during cluster join)
     if (this.electionsPaused) {
       this.config.logger.debug('Elections paused, not starting election timer');
@@ -523,15 +542,51 @@ export class RaftNode extends EventEmitter {
     return mapping[type] || 'LOG_ENTRY_TYPE_UNKNOWN';
   }
 
-  // Persistence (should be implemented with actual storage)
-  async loadState(): Promise<void> {
-    // TODO: Load persistent state from disk
-    // - currentTerm
-    // - votedFor
-    // - log[]
+  // Persistence — saves currentTerm and votedFor to prevent split-brain on restart
+  private get stateFilePath(): string | null {
+    if (!this.config.dataDir) return null;
+    return path.join(this.config.dataDir, 'raft-state.json');
   }
 
-  async saveState(): Promise<void> {
-    // TODO: Save persistent state to disk
+  loadState(): void {
+    const filePath = this.stateFilePath;
+    if (!filePath) return;
+
+    try {
+      const data = fs.readFileSync(filePath, 'utf-8');
+      const state = JSON.parse(data);
+      if (typeof state.currentTerm === 'number' && state.currentTerm > this.currentTerm) {
+        this.currentTerm = state.currentTerm;
+        this.votedFor = state.votedFor ?? null;
+        this.config.logger.info('Loaded persisted Raft state', {
+          currentTerm: this.currentTerm,
+          votedFor: this.votedFor,
+        });
+      }
+    } catch (error: any) {
+      if (error.code !== 'ENOENT') {
+        this.config.logger.warn('Failed to load Raft state', { error: error.message });
+      }
+      // No file or parse error — start fresh
+    }
+  }
+
+  saveState(): void {
+    const filePath = this.stateFilePath;
+    if (!filePath) return;
+
+    try {
+      // Ensure directory exists
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      fs.writeFileSync(filePath, JSON.stringify({
+        currentTerm: this.currentTerm,
+        votedFor: this.votedFor,
+      }), 'utf-8');
+    } catch (error: any) {
+      this.config.logger.warn('Failed to save Raft state', { error: error.message });
+    }
   }
 }

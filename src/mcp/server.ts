@@ -11,6 +11,7 @@ import { ClusterStateManager, ClaudeSession, ContextEntry } from '../cluster/sta
 import { MembershipManager } from '../cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus } from '../cluster/scheduler.js';
 import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
+import { GrpcClientPool } from '../grpc/client.js';
 import { createTools, ToolHandler } from './tools.js';
 import { createTimelineTools } from './timeline-tools.js';
 import { TimelineDB } from './timeline-db.js';
@@ -27,6 +28,7 @@ export interface McpServerConfig {
   k8sAdapter: KubernetesAdapter;
   sessionId: string;
   nodeId: string;
+  clientPool?: GrpcClientPool;
 }
 
 export class ClusterMcpServer {
@@ -65,6 +67,7 @@ export class ClusterMcpServer {
       sessionId: this.config.sessionId,
       nodeId: this.config.nodeId,
       logger: this.config.logger,
+      clientPool: this.config.clientPool,
     });
 
     // Add timeline tools

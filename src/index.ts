@@ -155,7 +155,8 @@ export class ClaudeCluster extends EventEmitter {
       const existingId = fs.readFileSync(nodeIdFile, 'utf-8').trim();
       if (existingId) {
         const hostname = os.hostname().split('.')[0]; // Get short hostname
-        return `${hostname}-${existingId}`;
+        const suffix = this.mcpMode ? '-mcp' : '';
+        return `${hostname}-${existingId}${suffix}`;
       }
     } catch {
       // File doesn't exist or can't be read, create new ID
@@ -174,7 +175,8 @@ export class ClaudeCluster extends EventEmitter {
     }
 
     const hostname = os.hostname().split('.')[0];
-    return `${hostname}-${shortId}`;
+    const suffix = this.mcpMode ? '-mcp' : '';
+    return `${hostname}-${shortId}${suffix}`;
   }
 
   private createLogger(): winston.Logger {
@@ -429,7 +431,9 @@ export class ClaudeCluster extends EventEmitter {
     const tailscaleIp = this.tailscale?.getSelfIP() ?? '127.0.0.1';
     const hostname = this.tailscale?.getSelfHostname() ?? 'localhost';
 
-    // Raft consensus
+    // Raft consensus (MCP process is non-voting observer only)
+    const os = require('os');
+    const configDir = require('path').join(process.env.HOME || os.homedir(), '.claudecluster');
     this.raft = new RaftNode({
       nodeId: this.nodeId,
       logger: this.logger,
@@ -438,6 +442,8 @@ export class ClaudeCluster extends EventEmitter {
       electionTimeoutMaxMs: this.config.raft.electionTimeoutMaxMs,
       heartbeatIntervalMs: this.config.raft.heartbeatIntervalMs,
       maxLogEntriesPerAppend: this.config.raft.maxLogEntriesPerAppend,
+      nonVoting: this.mcpMode,
+      dataDir: configDir,
     });
 
     // Membership manager
@@ -715,16 +721,22 @@ export class ClaudeCluster extends EventEmitter {
     // Collect all possible addresses to try
     const addresses: Array<{ address: string; source: string }> = [];
 
-    // Get our own IP to avoid self-registration
+    // Get our own IP and hostname to avoid self-registration
     const selfIp = this.tailscale?.getSelfIP() ?? '127.0.0.1';
+    const selfHostname = require('os').hostname().split('.')[0];
 
     // Add configured seeds
     if (this.config.seeds) {
       for (const seed of this.config.seeds) {
-        // Skip if seed is our own address (check localhost, 127.0.0.1, and our own IP)
+        // Skip if seed is our own address (check localhost, 127.0.0.1, our IP, and hostname)
         const seedHost = seed.address.split(':')[0];
-        if (seedHost === '127.0.0.1' || seedHost === 'localhost' || seedHost === selfIp) {
-          this.logger.debug('Skipping self as seed', { seed: seed.address, selfIp });
+        if (
+          seedHost === '127.0.0.1' ||
+          seedHost === 'localhost' ||
+          seedHost === selfIp ||
+          seedHost === selfHostname
+        ) {
+          this.logger.debug('Skipping self as seed', { seed: seed.address, selfIp, selfHostname });
           continue;
         }
         addresses.push({ address: seed.address, source: 'seed' });
@@ -744,7 +756,11 @@ export class ClaudeCluster extends EventEmitter {
     }
 
     if (addresses.length === 0) {
-      this.logger.info('No seed nodes or cluster peers found');
+      this.logger.warn('No seed nodes or cluster peers found — all seeds point to self. This node will bootstrap as a new cluster.', {
+        selfIp,
+        selfHostname,
+        configuredSeeds: this.config.seeds?.map(s => s.address) ?? [],
+      });
       return false;
     }
 
@@ -824,6 +840,7 @@ export class ClaudeCluster extends EventEmitter {
       k8sAdapter: this.k8sAdapter!,
       sessionId: this.sessionId,
       nodeId: this.nodeId,
+      clientPool: this.clientPool ?? undefined,
     });
 
     this.logger.info('MCP server initialized');
@@ -874,6 +891,9 @@ async function runMcpServer(config: ClusterConfig, options: { seed?: string; ver
   // Apply CLI overrides
   if (options.port) {
     config.node.grpcPort = parseInt(options.port);
+  } else {
+    // Use a different port than the systemd service (50051) to avoid conflicts
+    config.node.grpcPort = 50052;
   }
   if (options.seed) {
     config.seeds = [{ address: options.seed }];

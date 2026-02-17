@@ -385,6 +385,7 @@ interface HeartbeatResponse {
   acknowledged: boolean;
   leader_address: string;
   pending_tasks: PendingTask[];
+  leader_id: string;
 }
 
 interface PendingTask {

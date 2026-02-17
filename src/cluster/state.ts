@@ -83,6 +83,17 @@ export class ClusterStateManager extends EventEmitter {
     const nodes = this.config.membership.getAllNodes();
     const leaderId = this.config.raft.getLeaderId();
 
+    // Reconcile roles against authoritative leaderId as a safety net
+    if (leaderId) {
+      for (const node of nodes) {
+        if (node.nodeId === leaderId) {
+          node.role = 'leader';
+        } else if (node.role === 'leader') {
+          node.role = 'follower';
+        }
+      }
+    }
+
     return {
       clusterId: this.config.clusterId,
       leaderId,
