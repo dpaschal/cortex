@@ -1,6 +1,8 @@
 import { EventEmitter } from 'events';
 import { Logger } from 'winston';
 import * as path from 'path';
+import * as fs from 'fs';
+import { exec } from 'child_process';
 import { RaftNode, PeerInfo } from './raft.js';
 import { MembershipManager, NodeInfo } from './membership.js';
 import { GrpcClientPool, AgentClient } from '../grpc/client.js';
@@ -331,5 +333,86 @@ export class RollingUpdater extends EventEmitter {
 
   private sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Execute the full rolling update (Phases 0-4).
+   * dryRun: true runs only preflight and reports results.
+   */
+  async execute(options: { dryRun?: boolean } = {}): Promise<UpdateResult> {
+    const nodesUpdated: string[] = [];
+    const nodesRolledBack: string[] = [];
+
+    // Phase 0: Preflight
+    this.progress('preflight', this.config.selfNodeId, 'Running pre-flight checks');
+    const preflight = await this.preflight();
+
+    if (!preflight.ok) {
+      this.progress('aborted', this.config.selfNodeId, `Pre-flight failed: ${preflight.reason}`);
+      return { success: false, nodesUpdated, nodesRolledBack, error: preflight.reason };
+    }
+
+    this.progress('preflight', this.config.selfNodeId,
+      `Pre-flight passed: ${preflight.votingCount} voting nodes, quorum=${preflight.quorumSize}, ${preflight.followers.length} followers to update`);
+
+    if (options.dryRun) {
+      return { success: true, nodesUpdated, nodesRolledBack };
+    }
+
+    // Phases 1-3: Upgrade each follower sequentially
+    for (const follower of preflight.followers) {
+      this.progress('add', follower.nodeId, `Starting upgrade (${nodesUpdated.length + 1}/${preflight.followers.length})`);
+
+      const result = await this.upgradeFollower(follower);
+
+      if (result.rolledBack) {
+        nodesRolledBack.push(follower.nodeId);
+      }
+
+      if (!result.success) {
+        this.progress('aborted', this.config.selfNodeId,
+          `Aborting rolling update: ${follower.nodeId} failed — ${result.error}`);
+        return {
+          success: false,
+          nodesUpdated,
+          nodesRolledBack,
+          error: `Failed on ${follower.nodeId}: ${result.error}`,
+        };
+      }
+
+      nodesUpdated.push(follower.nodeId);
+    }
+
+    // Phase 4: Leader self-update
+    this.progress('leader-restart', this.config.selfNodeId, 'All followers updated. Restarting leader...');
+    await this.upgradeLeader();
+
+    // If we get here, the restart hasn't happened yet (exec is async)
+    return { success: true, nodesUpdated, nodesRolledBack };
+  }
+
+  /**
+   * Phase 4: Leader self-update.
+   * Backs up dist/, then restarts own service. The process will die and be restarted by systemd.
+   */
+  private async upgradeLeader(): Promise<void> {
+    const distDir = this.config.distDir;
+    const baseDir = path.dirname(distDir);
+
+    // Backup current dist
+    const bakDir = path.join(baseDir, 'dist.bak');
+    try {
+      if (fs.existsSync(bakDir)) {
+        fs.rmSync(bakDir, { recursive: true });
+      }
+      fs.cpSync(distDir, bakDir, { recursive: true });
+    } catch (error) {
+      this.config.logger.warn('Failed to create leader backup', { error });
+      // Continue anyway — the build is already in place
+    }
+
+    // Restart self via systemctl. This will kill our process.
+    this.progress('leader-restart', this.config.selfNodeId, 'Executing systemctl restart claudecluster');
+    exec('systemctl restart claudecluster');
   }
 }

@@ -301,4 +301,28 @@ describe('RollingUpdater', () => {
       pollSpy.mockRestore();
     });
   });
+
+  describe('execute', () => {
+    it('should return preflight failure on dry run with unhealthy cluster', async () => {
+      const { updater } = createUpdater({
+        nodes: [
+          createMockNode({ nodeId: 'leader-1', role: 'leader' }),
+          createMockNode({ nodeId: 'follower-1', status: 'offline' }),
+          createMockNode({ nodeId: 'follower-2' }),
+          createMockNode({ nodeId: 'follower-3' }),
+        ],
+      });
+
+      const result = await updater.execute({ dryRun: true });
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('follower-1');
+    });
+
+    it('should report success on dry run with healthy cluster', async () => {
+      const { updater } = createUpdater();
+      const result = await updater.execute({ dryRun: true });
+      expect(result.success).toBe(true);
+      expect(result.nodesUpdated).toHaveLength(0); // dry run, no actual updates
+    });
+  });
 });
