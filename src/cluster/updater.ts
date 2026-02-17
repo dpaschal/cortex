@@ -1,5 +1,6 @@
 import { EventEmitter } from 'events';
 import { Logger } from 'winston';
+import * as path from 'path';
 import { RaftNode, PeerInfo } from './raft.js';
 import { MembershipManager, NodeInfo } from './membership.js';
 import { GrpcClientPool, AgentClient } from '../grpc/client.js';
@@ -157,5 +158,178 @@ export class RollingUpdater extends EventEmitter {
     }
 
     return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
+  }
+
+  /**
+   * Phases 1-3 for a single follower: Add (backup+rsync+verify) → Activate (restart+healthcheck+stabilize) → Commit or Rollback.
+   */
+  async upgradeFollower(node: NodeInfo): Promise<{ success: boolean; rolledBack: boolean; error?: string }> {
+    const nodeId = node.nodeId;
+    const address = `${node.tailscaleIp}:${node.grpcPort}`;
+    const distDir = this.config.distDir;
+    const baseDir = path.dirname(distDir);
+    const selfNode = this.config.membership.getAllNodes().find(n => n.nodeId === this.config.selfNodeId);
+    const leaderIp = selfNode?.tailscaleIp ?? '127.0.0.1';
+
+    try {
+      // --- Phase 1: Add ---
+
+      // Backup
+      this.progress('add', nodeId, 'Backing up dist/ to dist.bak/');
+      const backup = await this.runShellOnNode(node, `cd ${baseDir} && rm -rf dist.bak && cp -a dist dist.bak`);
+      if (backup.exitCode !== 0) {
+        return { success: false, rolledBack: false, error: `Backup failed: ${backup.stderr}` };
+      }
+
+      // Rsync
+      this.progress('add', nodeId, 'Syncing new dist/ from leader');
+      const rsync = await this.runShellOnNode(node, `rsync -az --delete ${leaderIp}:${distDir}/ ${distDir}/`);
+      if (rsync.exitCode !== 0) {
+        this.progress('rollback', nodeId, 'Rsync failed, restoring backup');
+        await this.rollbackNode(node);
+        return { success: false, rolledBack: true, error: `Rsync failed: ${rsync.stderr}` };
+      }
+
+      // Verify
+      this.progress('add', nodeId, 'Verifying version.json');
+      const verify = await this.runShellOnNode(node, `cat ${distDir}/version.json`);
+      if (verify.exitCode !== 0) {
+        this.progress('rollback', nodeId, 'Version verify failed, restoring backup');
+        await this.rollbackNode(node);
+        return { success: false, rolledBack: true, error: `Version verify failed: ${verify.stderr}` };
+      }
+
+      // --- Phase 2: Activate ---
+
+      // Restart
+      this.progress('activate', nodeId, 'Restarting claudecluster service');
+      try {
+        await this.runShellOnNode(node, 'systemctl restart claudecluster', 10000);
+      } catch {
+        // Expected: connection drops when the service restarts
+        this.progress('activate', nodeId, 'Connection dropped (expected during restart)');
+      }
+
+      // Close stale gRPC connection
+      this.config.clientPool.closeConnection(address);
+
+      // Poll healthCheck
+      this.progress('activate', nodeId, 'Polling health check...');
+      const healthy = await this.pollHealthCheck(node, 60000);
+      if (!healthy) {
+        this.progress('rollback', nodeId, 'Health check timed out, rolling back');
+        await this.rollbackNode(node);
+        return { success: false, rolledBack: true, error: 'Health check timed out after 60s' };
+      }
+
+      // Stabilization
+      this.progress('stabilize', nodeId, 'Waiting for stabilization (membership + heartbeats)...');
+      const stable = await this.waitForStabilization(node, this.heartbeatMs * 4);
+      if (!stable) {
+        this.progress('rollback', nodeId, 'Stabilization failed, rolling back');
+        await this.rollbackNode(node);
+        return { success: false, rolledBack: true, error: 'Node did not stabilize after restart' };
+      }
+
+      // --- Phase 3: Commit ---
+      this.progress('commit', nodeId, 'Removing dist.bak/ (commit)');
+      await this.runShellOnNode(node, `rm -rf ${baseDir}/dist.bak`);
+
+      this.progress('complete', nodeId, 'Upgrade committed successfully');
+      return { success: true, rolledBack: false };
+
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      this.progress('rollback', nodeId, `Unexpected error: ${msg}`);
+      try {
+        await this.rollbackNode(node);
+      } catch {
+        // Best effort rollback
+      }
+      return { success: false, rolledBack: true, error: msg };
+    }
+  }
+
+  /**
+   * Rollback a node: restore dist.bak and restart.
+   */
+  async rollbackNode(node: NodeInfo): Promise<void> {
+    const baseDir = path.dirname(this.config.distDir);
+    const address = `${node.tailscaleIp}:${node.grpcPort}`;
+
+    try {
+      await this.runShellOnNode(node, `cd ${baseDir} && rm -rf dist && mv dist.bak dist`);
+    } catch {
+      // If we can't reach the node, try after closing the connection
+      this.config.clientPool.closeConnection(address);
+      try {
+        await this.runShellOnNode(node, `cd ${baseDir} && rm -rf dist && mv dist.bak dist`);
+      } catch {
+        this.config.logger.error('Failed to rollback node — manual intervention required', { nodeId: node.nodeId });
+        return;
+      }
+    }
+
+    try {
+      await this.runShellOnNode(node, 'systemctl restart claudecluster', 10000);
+    } catch {
+      // Expected connection drop
+    }
+
+    this.config.clientPool.closeConnection(address);
+  }
+
+  /**
+   * Poll healthCheck until healthy or timeout.
+   */
+  private async pollHealthCheck(node: NodeInfo, timeoutMs: number): Promise<boolean> {
+    const address = `${node.tailscaleIp}:${node.grpcPort}`;
+    const deadline = Date.now() + timeoutMs;
+    const pollIntervalMs = 2000;
+
+    while (Date.now() < deadline) {
+      try {
+        const agent = new AgentClient(this.config.clientPool, address);
+        const response = await agent.healthCheck();
+        if (response.healthy) {
+          return true;
+        }
+      } catch {
+        // Not ready yet
+      }
+      await this.sleep(pollIntervalMs);
+    }
+
+    return false;
+  }
+
+  /**
+   * Wait for a node to be active in membership with fresh heartbeats.
+   */
+  private async waitForStabilization(node: NodeInfo, timeoutMs: number): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+      const current = this.config.membership.getAllNodes().find(n => n.nodeId === node.nodeId);
+      if (current && current.status === 'active') {
+        const age = Date.now() - current.lastSeen;
+        if (age < this.heartbeatMs * 2) {
+          return true;
+        }
+      }
+      await this.sleep(1000);
+    }
+
+    return false;
+  }
+
+  private progress(phase: UpdateProgress['phase'], nodeId: string, message: string): void {
+    const event: UpdateProgress = { phase, nodeId, message };
+    this.config.logger.info(`[ISSU] ${phase} ${nodeId}: ${message}`);
+    this.emit('progress', event);
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 }

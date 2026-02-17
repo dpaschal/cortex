@@ -198,4 +198,107 @@ describe('RollingUpdater', () => {
       expect(result.stderr).toContain('not found');
     });
   });
+
+  describe('upgradeFollower', () => {
+    it('should backup, rsync, verify, restart, stabilize, and commit', async () => {
+      const nodes = [
+        createMockNode({ nodeId: 'leader-1', role: 'leader', tailscaleIp: '100.0.0.1' }),
+        createMockNode({ nodeId: 'follower-1', tailscaleIp: '100.0.0.2' }),
+        createMockNode({ nodeId: 'follower-2', tailscaleIp: '100.0.0.3' }),
+        createMockNode({ nodeId: 'follower-3', tailscaleIp: '100.0.0.4' }),
+      ];
+      const { updater, mockClientPool } = createUpdater({ nodes });
+      const follower = nodes[1];
+
+      // Mock all shell commands to succeed
+      const mockExecuteTask = vi.fn().mockImplementation(async function* () {
+        yield { output: { type: 'stdout', data: Buffer.from('ok\n') } };
+        yield { status: { exit_code: 0 } };
+      });
+      const mockHealthCheck = vi.fn().mockResolvedValue({ healthy: true });
+
+      (AgentClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+        executeTask: mockExecuteTask,
+        healthCheck: mockHealthCheck,
+      }));
+
+      const result = await updater.upgradeFollower(follower);
+      expect(result.success).toBe(true);
+      expect(result.rolledBack).toBe(false);
+      // Verify closeConnection was called (after restart)
+      expect(mockClientPool.closeConnection).toHaveBeenCalled();
+    });
+
+    it('should rollback if rsync fails', async () => {
+      const nodes = [
+        createMockNode({ nodeId: 'leader-1', role: 'leader', tailscaleIp: '100.0.0.1' }),
+        createMockNode({ nodeId: 'follower-1', tailscaleIp: '100.0.0.2' }),
+        createMockNode({ nodeId: 'follower-2', tailscaleIp: '100.0.0.3' }),
+        createMockNode({ nodeId: 'follower-3', tailscaleIp: '100.0.0.4' }),
+      ];
+      const { updater } = createUpdater({ nodes });
+      const follower = nodes[1];
+
+      let callNum = 0;
+      const mockExecuteTask = vi.fn().mockImplementation(async function* () {
+        callNum++;
+        if (callNum === 2) {
+          // Second call is rsync — fail it
+          yield { output: { type: 'stderr', data: Buffer.from('rsync error\n') } };
+          yield { status: { exit_code: 1 } };
+        } else {
+          yield { output: { type: 'stdout', data: Buffer.from('ok\n') } };
+          yield { status: { exit_code: 0 } };
+        }
+      });
+
+      (AgentClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+        executeTask: mockExecuteTask,
+      }));
+
+      const result = await updater.upgradeFollower(follower);
+      expect(result.success).toBe(false);
+      expect(result.rolledBack).toBe(true);
+      expect(result.error).toContain('Rsync failed');
+    });
+
+    it('should rollback if health check times out', async () => {
+      const nodes = [
+        createMockNode({ nodeId: 'leader-1', role: 'leader', tailscaleIp: '100.0.0.1' }),
+        createMockNode({ nodeId: 'follower-1', tailscaleIp: '100.0.0.2' }),
+        createMockNode({ nodeId: 'follower-2', tailscaleIp: '100.0.0.3' }),
+        createMockNode({ nodeId: 'follower-3', tailscaleIp: '100.0.0.4' }),
+      ];
+      const { updater } = createUpdater({ nodes });
+      const follower = nodes[1];
+
+      // Mock shell commands to succeed
+      const mockExecuteTask = vi.fn().mockImplementation(async function* () {
+        yield { output: { type: 'stdout', data: Buffer.from('ok\n') } };
+        yield { status: { exit_code: 0 } };
+      });
+      // Mock healthCheck to always return unhealthy
+      const mockHealthCheck = vi.fn().mockResolvedValue({ healthy: false });
+
+      (AgentClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+        executeTask: mockExecuteTask,
+        healthCheck: mockHealthCheck,
+      }));
+
+      // Override sleep to avoid real timeouts in tests
+      // Use vi.spyOn to mock the private sleep method
+      const sleepSpy = vi.spyOn(updater as any, 'sleep').mockResolvedValue(undefined);
+
+      // Override pollHealthCheck to return false quickly (simulating timeout)
+      const pollSpy = vi.spyOn(updater as any, 'pollHealthCheck').mockResolvedValue(false);
+
+      const result = await updater.upgradeFollower(follower);
+      expect(result.success).toBe(false);
+      expect(result.rolledBack).toBe(true);
+      expect(result.error).toContain('Health check timed out');
+
+      sleepSpy.mockRestore();
+      pollSpy.mockRestore();
+    });
+  });
 });
