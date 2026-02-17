@@ -8,7 +8,7 @@
     "claudecluster": "./dist/index.js"
   },
   "scripts": {
-    "build": "npm run proto:generate && tsc",
+    "build": "npm run proto:generate && tsc && node scripts/write-version.js",
     "proto:generate": "proto-loader-gen-types --longs=String --enums=String --defaults --oneofs --grpcLib=@grpc/grpc-js --outDir=src/generated proto/*.proto",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
