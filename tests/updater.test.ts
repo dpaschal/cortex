@@ -2,8 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { RollingUpdater } from '../src/cluster/updater.js';
 import { MembershipManager, NodeInfo } from '../src/cluster/membership.js';
 import { RaftNode, PeerInfo } from '../src/cluster/raft.js';
-import { GrpcClientPool } from '../src/grpc/client.js';
+import { GrpcClientPool, AgentClient } from '../src/grpc/client.js';
 import { Logger } from 'winston';
+
+vi.mock('../src/grpc/client.js', async () => {
+  const actual = await vi.importActual('../src/grpc/client.js');
+  return {
+    ...actual,
+    AgentClient: vi.fn(),
+  };
+});
 
 const createMockLogger = (): Logger => ({
   info: vi.fn(),
@@ -146,6 +154,48 @@ describe('RollingUpdater', () => {
       const result = await updater.preflight();
       expect(result.ok).toBe(false);
       expect(result.reason).toContain('stale');
+    });
+  });
+
+  describe('runShellOnNode', () => {
+    it('should execute a shell command on a remote node and return stdout', async () => {
+      const { updater } = createUpdater();
+
+      const mockExecuteTask = vi.fn().mockImplementation(async function* () {
+        yield { output: { type: 'stdout', data: Buffer.from('OK\n') } };
+        yield { status: { exit_code: 0 } };
+      });
+      (AgentClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+        executeTask: mockExecuteTask,
+      }));
+
+      const result = await updater.runShellOnNode(
+        createMockNode({ tailscaleIp: '100.0.0.2', grpcPort: 50051 }),
+        'echo OK'
+      );
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('OK');
+    });
+
+    it('should return non-zero exit code on failure', async () => {
+      const { updater } = createUpdater();
+
+      const mockExecuteTask = vi.fn().mockImplementation(async function* () {
+        yield { output: { type: 'stderr', data: Buffer.from('not found\n') } };
+        yield { status: { exit_code: 1 } };
+      });
+      (AgentClient as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => ({
+        executeTask: mockExecuteTask,
+      }));
+
+      const result = await updater.runShellOnNode(
+        createMockNode(),
+        'false'
+      );
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain('not found');
     });
   });
 });

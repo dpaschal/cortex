@@ -2,7 +2,8 @@ import { EventEmitter } from 'events';
 import { Logger } from 'winston';
 import { RaftNode, PeerInfo } from './raft.js';
 import { MembershipManager, NodeInfo } from './membership.js';
-import { GrpcClientPool } from '../grpc/client.js';
+import { GrpcClientPool, AgentClient } from '../grpc/client.js';
+import { randomUUID } from 'crypto';
 
 export interface UpdaterConfig {
   membership: MembershipManager;
@@ -110,5 +111,51 @@ export class RollingUpdater extends EventEmitter {
       quorumSize,
       votingCount,
     };
+  }
+
+  /**
+   * Execute a shell command on a remote node via AgentClient.executeTask().
+   * Returns stdout, stderr, and exit code.
+   */
+  async runShellOnNode(
+    node: NodeInfo,
+    command: string,
+    timeoutMs: number = 120000
+  ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+    const address = `${node.tailscaleIp}:${node.grpcPort}`;
+    const agent = new AgentClient(this.config.clientPool, address);
+
+    let stdout = '';
+    let stderr = '';
+    let exitCode = -1;
+
+    const request = {
+      spec: {
+        task_id: randomUUID(),
+        type: 'TASK_TYPE_SHELL',
+        submitter_node: this.config.selfNodeId,
+        shell: {
+          command,
+          working_directory: this.config.distDir.replace('/dist', ''),
+        },
+        timeout_ms: timeoutMs.toString(),
+      },
+    };
+
+    for await (const response of agent.executeTask(request)) {
+      if (response.output) {
+        const data = response.output.data?.toString() ?? '';
+        if (response.output.type === 'stdout' || response.output.type === 'TASK_OUTPUT_STDOUT') {
+          stdout += data;
+        } else {
+          stderr += data;
+        }
+      }
+      if (response.status) {
+        exitCode = response.status.exit_code ?? -1;
+      }
+    }
+
+    return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode };
   }
 }
