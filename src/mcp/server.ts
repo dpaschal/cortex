@@ -12,6 +12,7 @@ import { MembershipManager } from '../cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus } from '../cluster/scheduler.js';
 import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
 import { GrpcClientPool } from '../grpc/client.js';
+import { RaftNode } from '../cluster/raft.js';
 import { createTools, ToolHandler } from './tools.js';
 import { createTimelineTools } from './timeline-tools.js';
 import { TimelineDB } from './timeline-db.js';
@@ -26,6 +27,8 @@ export interface McpServerConfig {
   membership: MembershipManager;
   scheduler: TaskScheduler;
   k8sAdapter: KubernetesAdapter;
+  clientPool: GrpcClientPool;
+  raft: RaftNode;
   sessionId: string;
   nodeId: string;
   clientPool?: GrpcClientPool;
@@ -64,6 +67,8 @@ export class ClusterMcpServer {
       membership: this.config.membership,
       scheduler: this.config.scheduler,
       k8sAdapter: this.config.k8sAdapter,
+      clientPool: this.config.clientPool,
+      raft: this.config.raft,
       sessionId: this.config.sessionId,
       nodeId: this.config.nodeId,
       logger: this.config.logger,

@@ -4,6 +4,8 @@ import { ClusterStateManager, ClaudeSession, ContextEntry, ContextType, ContextV
 import { MembershipManager, NodeInfo, NodeResources } from '../src/cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus } from '../src/cluster/scheduler.js';
 import { KubernetesAdapter, K8sCluster, K8sResources, K8sJobSpec } from '../src/kubernetes/adapter.js';
+import { GrpcClientPool } from '../src/grpc/client.js';
+import { RaftNode } from '../src/cluster/raft.js';
 import { Logger } from 'winston';
 
 // Mock helper functions
@@ -169,6 +171,8 @@ function createToolsConfig(overrides: Partial<ToolsConfig> = {}): ToolsConfig {
     membership: createMockMembership(),
     scheduler: createMockScheduler(),
     k8sAdapter: createMockK8sAdapter(),
+    clientPool: { closeConnection: vi.fn() } as unknown as GrpcClientPool,
+    raft: { isLeader: vi.fn().mockReturnValue(true), getPeers: vi.fn().mockReturnValue([]) } as unknown as RaftNode,
     sessionId: 'session-1',
     nodeId: 'node-1',
     logger: createMockLogger(),
@@ -178,11 +182,11 @@ function createToolsConfig(overrides: Partial<ToolsConfig> = {}): ToolsConfig {
 
 describe('MCP Tools', () => {
   describe('Tool Registration', () => {
-    it('should create all 15 tools', () => {
+    it('should create all 16 tools', () => {
       const config = createToolsConfig();
       const tools = createTools(config);
 
-      expect(tools.size).toBe(15);
+      expect(tools.size).toBe(16);
       expect(tools.has('cluster_status')).toBe(true);
       expect(tools.has('list_nodes')).toBe(true);
       expect(tools.has('submit_task')).toBe(true);
@@ -198,6 +202,7 @@ describe('MCP Tools', () => {
       expect(tools.has('relay_to_session')).toBe(true);
       expect(tools.has('publish_context')).toBe(true);
       expect(tools.has('query_context')).toBe(true);
+      expect(tools.has('initiate_rolling_update')).toBe(true);
     });
 
     it('each tool should have description and inputSchema', () => {

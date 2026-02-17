@@ -4,7 +4,10 @@ import { MembershipManager, NodeInfo } from '../cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus, TaskType } from '../cluster/scheduler.js';
 import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
 import { ClusterClient, GrpcClientPool } from '../grpc/client.js';
+import { RaftNode } from '../cluster/raft.js';
+import { UpdateProgress } from '../cluster/updater.js';
 import { randomUUID } from 'crypto';
+import * as path from 'path';
 
 export interface ToolHandler {
   description: string;
@@ -21,6 +24,8 @@ export interface ToolsConfig {
   membership: MembershipManager;
   scheduler: TaskScheduler;
   k8sAdapter: KubernetesAdapter;
+  clientPool: GrpcClientPool;
+  raft: RaftNode;
   sessionId: string;
   nodeId: string;
   logger: Logger;
@@ -836,6 +841,44 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
         sessionId: e.sessionId,
         timestamp: new Date(e.timestamp).toISOString(),
       }));
+    },
+  });
+
+  // initiate_rolling_update - ISSU rolling update
+  tools.set('initiate_rolling_update', {
+    description: 'Initiate an ISSU rolling update across all cluster nodes. Leader pushes new dist/ to followers one at a time, restarts each maintaining Raft quorum, with automatic rollback on failure. Leader restarts itself last.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dryRun: {
+          type: 'boolean',
+          description: 'If true, only run pre-flight checks without making changes (default: false)',
+        },
+      },
+    },
+    handler: async (args) => {
+      const { RollingUpdater } = await import('../cluster/updater.js');
+
+      const updater = new RollingUpdater({
+        membership: config.membership,
+        raft: config.raft,
+        clientPool: config.clientPool,
+        logger: config.logger,
+        selfNodeId: config.nodeId,
+        distDir: path.join(process.cwd(), 'dist'),
+      });
+
+      const progress: UpdateProgress[] = [];
+      updater.on('progress', (event: UpdateProgress) => {
+        progress.push(event);
+      });
+
+      const result = await updater.execute({ dryRun: args.dryRun as boolean });
+
+      return {
+        ...result,
+        progress,
+      };
     },
   });
 

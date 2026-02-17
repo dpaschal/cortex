@@ -875,9 +875,10 @@ export class ClaudeCluster extends EventEmitter {
       membership: this.membership!,
       scheduler: this.scheduler!,
       k8sAdapter: this.k8sAdapter!,
+      clientPool: this.clientPool!,
+      raft: this.raft!,
       sessionId: this.sessionId,
       nodeId: this.nodeId,
-      clientPool: this.clientPool ?? undefined,
     });
 
     this.logger.info('MCP server initialized');
