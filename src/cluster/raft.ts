@@ -140,6 +140,17 @@ export class RaftNode extends EventEmitter {
     this.config.logger.info('Removed peer', { nodeId });
   }
 
+  // Called when joining a cluster - delay elections to let leader sync log
+  delayNextElection(delayMs: number = 10000): void {
+    this.clearElectionTimeout();
+    this.electionTimeout = setTimeout(() => {
+      if (this.running && this.state !== 'leader') {
+        this.becomeCandidate();
+      }
+    }, delayMs);
+    this.config.logger.info('Election delayed after joining cluster', { delayMs });
+  }
+
   getPeers(): PeerInfo[] {
     return Array.from(this.peers.values());
   }
@@ -173,10 +184,20 @@ export class RaftNode extends EventEmitter {
     lastLogIndex: number;
     lastLogTerm: number;
   }): { term: number; voteGranted: boolean } {
-    this.config.logger.debug('Received RequestVote', request);
+    this.config.logger.info('Received RequestVote', {
+      from: request.candidateId,
+      requestTerm: request.term,
+      myTerm: this.currentTerm,
+      myState: this.state,
+      votedFor: this.votedFor,
+    });
 
-    // Update term if necessary
+    // Update term if necessary - this resets votedFor
     if (request.term > this.currentTerm) {
+      this.config.logger.info('Higher term received, becoming follower', {
+        oldTerm: this.currentTerm,
+        newTerm: request.term,
+      });
       this.becomeFollower(request.term);
     }
 
@@ -188,15 +209,28 @@ export class RaftNode extends EventEmitter {
         (request.lastLogTerm === this.getLastLogTerm() &&
           request.lastLogIndex >= this.getLastLogIndex());
 
-      if (logOk && (this.votedFor === null || this.votedFor === request.candidateId)) {
+      const canVote = this.votedFor === null || this.votedFor === request.candidateId;
+
+      this.config.logger.info('Vote decision', {
+        logOk,
+        canVote,
+        votedFor: this.votedFor,
+        candidateId: request.candidateId,
+        reqLastLogTerm: request.lastLogTerm,
+        reqLastLogIndex: request.lastLogIndex,
+        myLastLogTerm: this.getLastLogTerm(),
+        myLastLogIndex: this.getLastLogIndex(),
+      });
+
+      if (logOk && canVote) {
         voteGranted = true;
         this.votedFor = request.candidateId;
         this.saveState();
         this.resetElectionTimeout();
+        this.config.logger.info('Vote GRANTED', { to: request.candidateId, term: this.currentTerm });
       }
     }
 
-    this.config.logger.debug('RequestVote response', { voteGranted, term: this.currentTerm });
     return { term: this.currentTerm, voteGranted };
   }
 
@@ -208,10 +242,13 @@ export class RaftNode extends EventEmitter {
     entries: LogEntry[];
     leaderCommit: number;
   }): { term: number; success: boolean; matchIndex: number } {
-    this.config.logger.debug('Received AppendEntries', {
+    this.config.logger.info('Received AppendEntries', {
       term: request.term,
       leaderId: request.leaderId,
+      prevLogIndex: request.prevLogIndex,
+      prevLogTerm: request.prevLogTerm,
       entriesCount: request.entries.length,
+      leaderCommit: request.leaderCommit,
     });
 
     // Update term if necessary
@@ -398,6 +435,16 @@ export class RaftNode extends EventEmitter {
           data: e.data,
         }));
 
+      this.config.logger.info('Sending AppendEntries', {
+        to: peer.nodeId,
+        address: peer.address,
+        term: this.currentTerm,
+        prevLogIndex,
+        prevLogTerm,
+        entriesCount: entries.length,
+        leaderCommit: this.commitIndex,
+      });
+
       const client = new RaftClient(this.config.clientPool, peer.address);
       const response = await client.appendEntries({
         term: this.currentTerm.toString(),
@@ -409,6 +456,14 @@ export class RaftNode extends EventEmitter {
       });
 
       const responseTerm = parseInt(response.term);
+
+      this.config.logger.info('AppendEntries response', {
+        from: peer.nodeId,
+        success: response.success,
+        matchIndex: response.match_index,
+        responseTerm,
+      });
+
       if (responseTerm > this.currentTerm) {
         this.becomeFollower(responseTerm);
         return;
@@ -420,9 +475,17 @@ export class RaftNode extends EventEmitter {
       } else {
         // Decrement nextIndex and retry
         peer.nextIndex = Math.max(1, peer.nextIndex - 1);
+        this.config.logger.info('AppendEntries rejected, decrementing nextIndex', {
+          peer: peer.nodeId,
+          newNextIndex: peer.nextIndex,
+        });
       }
     } catch (error) {
-      this.config.logger.debug('AppendEntries failed', { peer: peer.nodeId, error });
+      this.config.logger.warn('AppendEntries failed', {
+        peer: peer.nodeId,
+        address: peer.address,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

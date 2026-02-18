@@ -190,9 +190,18 @@ export class MembershipManager extends EventEmitter {
         this.leaderAddress = response.leader_address;
         selfNode.status = 'active';
 
-        // Add peers from response
+        // Add peers from response (skip self and peers with missing addresses)
         for (const peer of response.peers) {
           const nodeInfo = this.protoToNode(peer);
+          if (nodeInfo.nodeId === this.config.nodeId) continue;
+          if (!nodeInfo.tailscaleIp || !nodeInfo.grpcPort) {
+            this.config.logger.warn('Skipping peer with missing address', {
+              nodeId: nodeInfo.nodeId,
+              tailscaleIp: nodeInfo.tailscaleIp,
+              grpcPort: nodeInfo.grpcPort,
+            });
+            continue;
+          }
           this.nodes.set(nodeInfo.nodeId, nodeInfo);
           this.config.raft.addPeer(
             nodeInfo.nodeId,
@@ -284,7 +293,7 @@ export class MembershipManager extends EventEmitter {
         pendingApproval: false,
         clusterId: this.config.nodeId, // Use leader's node ID as cluster ID for now
         leaderAddress: `${this.config.tailscaleIp}:${this.config.grpcPort}`,
-        peers: this.getAllNodes(),
+        peers: this.getAllNodes().filter(n => n.tailscaleIp && n.grpcPort),
       };
     }
 
