@@ -1,11 +1,11 @@
 {
-  "name": "claudecluster",
+  "name": "cortex-mesh",
   "version": "0.1.0",
-  "description": "Peer-to-peer compute mesh for Claude sessions with distributed task execution and GPU sharing",
+  "description": "Distributed AI mesh with Raft consensus, gRPC transport, and MCP integration",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "claudecluster": "./dist/index.js"
+    "cortex": "./dist/index.js"
   },
   "scripts": {
     "build": "npm run proto:generate && tsc && node scripts/write-version.js",
@@ -18,7 +18,7 @@
     "clean": "rm -rf dist src/generated"
   },
   "keywords": [
-    "claude",
+    "cortex",
     "distributed",
     "cluster",
     "mcp",
@@ -29,7 +29,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dpaschal/claudecluster.git"
+    "url": "https://github.com/dpaschal/cortex.git"
   },
   "engines": {
     "node": ">=20.0.0"

@@ -1,10 +1,10 @@
 [Unit]
-Description=Restart claudecluster after suspend/resume
+Description=Restart cortex after suspend/resume
 After=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/systemctl restart claudecluster.service
+ExecStart=/usr/bin/systemctl restart cortex.service
 
 [Install]
 WantedBy=suspend.target hibernate.target hybrid-sleep.target suspend-then-hibernate.target

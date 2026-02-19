@@ -1,12 +1,12 @@
 #!/bin/bash
-# Rolling deployment script for claudecluster
+# Rolling deployment script for cortex
 # Updates nodes one at a time, verifying health before proceeding
 
 set -e
 
 # Configuration
 REPO_DIR="/home/paschal/claudecluster"
-SERVICE_NAME="claudecluster"
+SERVICE_NAME="cortex"
 HEALTH_CHECK_TIMEOUT=30
 HEALTH_CHECK_INTERVAL=2
 
@@ -36,16 +36,16 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 show_banner() {
     echo -e "${CYAN}"
     cat << 'EOF'
-   _____ _                 _        _____ _           _
-  / ____| |               | |      / ____| |         | |
- | |    | | __ _ _   _  __| | ___ | |    | |_   _ ___| |_ ___ _ __
- | |    | |/ _` | | | |/ _` |/ _ \| |    | | | | / __| __/ _ \ '__|
- | |____| | (_| | |_| | (_| |  __/| |____| | |_| \__ \ ||  __/ |
-  \_____|_|\__,_|\__,_|\__,_|\___| \_____|_|\__,_|___/\__\___|_|
+   _____ ___  ____ _____ _______  __
+  / ____/ __ \|  _ \_   _|  ____\ \/ /
+ | |   | |  | | |_) || | | |__   \  /
+ | |   | |  | |  _ < | | |  __|  /  \
+ | |___| |__| | |_) || |_| |____/ /\ \
+  \_____\____/|____/_____|______/_/  \_\
 EOF
     echo -e "${NC}"
     echo -e "        ${MAGENTA}╔═══════════════════════════════════════╗${NC}"
-    echo -e "        ${MAGENTA}║${NC}   ${WHITE}P2P Compute Mesh${NC} ${CYAN}◈${NC} ${ORANGE}Rolling Deploy${NC}   ${MAGENTA}║${NC}"
+    echo -e "        ${MAGENTA}║${NC}   ${WHITE}Distributed AI Mesh${NC} ${CYAN}◈${NC} ${ORANGE}Rolling Deploy${NC}  ${MAGENTA}║${NC}"
     echo -e "        ${MAGENTA}╚═══════════════════════════════════════╝${NC}"
     echo
 }
@@ -106,9 +106,9 @@ deploy_node() {
             sudo systemctl restart "$SERVICE_NAME"
         else
             # If no systemd service, try to restart manually
-            pkill -f "node.*claudecluster" || true
+            pkill -f "node.*cortex" || true
             sleep 2
-            nohup node "$REPO_DIR/dist/index.js" > /tmp/claudecluster.log 2>&1 &
+            nohup node "$REPO_DIR/dist/index.js" > /tmp/cortex.log 2>&1 &
         fi
     else
         # Remote deployment via SSH
@@ -131,9 +131,9 @@ deploy_node() {
             if systemctl is-active --quiet "$SERVICE_NAME" 2>/dev/null; then
                 sudo systemctl restart "$SERVICE_NAME"
             else
-                pkill -f "node.*claudecluster" || true
+                pkill -f "node.*cortex" || true
                 sleep 2
-                nohup node "$REPO_DIR/dist/index.js" > /tmp/claudecluster.log 2>&1 &
+                nohup node "$REPO_DIR/dist/index.js" > /tmp/cortex.log 2>&1 &
             fi
 EOF
     fi

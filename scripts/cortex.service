@@ -1,5 +1,5 @@
 [Unit]
-Description=Claude Cluster - P2P Compute Mesh
+Description=Cortex - Distributed AI Mesh
 After=network.target tailscaled.service
 Wants=tailscaled.service
 
@@ -20,7 +20,7 @@ Environment=NODE_ENV=production
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=read-only
-ReadWritePaths=/home/paschal/.claudecluster
+ReadWritePaths=/home/paschal/.cortex
 PrivateTmp=true
 
 [Install]

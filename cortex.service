@@ -1,5 +1,5 @@
 [Unit]
-Description=Claude Cluster - Distributed compute mesh for Claude sessions
+Description=Cortex - Distributed AI mesh with Raft consensus and MCP integration
 After=network.target tailscaled.service
 Wants=tailscaled.service
 
