@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createTools, ToolHandler, ToolsConfig } from '../src/mcp/tools.js';
+import { createTools, ToolsConfig } from '../src/mcp/tools.js';
+import type { ToolHandler } from '../src/plugins/types.js';
 import { ClusterStateManager, ClaudeSession, ContextEntry, ContextType, ContextVisibility } from '../src/cluster/state.js';
 import { MembershipManager, NodeInfo, NodeResources } from '../src/cluster/membership.js';
 import { TaskScheduler, TaskSpec, TaskStatus } from '../src/cluster/scheduler.js';

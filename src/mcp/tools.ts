@@ -9,15 +9,8 @@ import { UpdateProgress } from '../cluster/updater.js';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 
-export interface ToolHandler {
-  description: string;
-  inputSchema: {
-    type: 'object';
-    properties: Record<string, unknown>;
-    required?: string[];
-  };
-  handler: (args: Record<string, unknown>) => Promise<unknown>;
-}
+import type { ToolHandler } from '../plugins/types.js';
+export type { ToolHandler } from '../plugins/types.js';
 
 export interface ToolsConfig {
   stateManager: ClusterStateManager;

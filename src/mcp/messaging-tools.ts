@@ -1,5 +1,5 @@
 // src/mcp/messaging-tools.ts
-import type { ToolHandler } from './tools.js';
+import type { ToolHandler } from '../plugins/types.js';
 import { Inbox } from '../messaging/inbox.js';
 
 export interface MessagingToolsConfig {

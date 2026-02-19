@@ -1,6 +1,6 @@
 // src/memory/memory-tools.ts
 import { Logger } from 'winston';
-import { ToolHandler } from '../mcp/tools.js';
+import type { ToolHandler } from '../plugins/types.js';
 import { SharedMemoryDB, Classification } from './shared-memory-db.js';
 import { MemoryReplicator } from './replication.js';
 import { RaftNode } from '../cluster/raft.js';

@@ -1,5 +1,5 @@
 // src/mcp/skill-tools.ts
-import type { ToolHandler } from './tools.js';
+import type { ToolHandler } from '../plugins/types.js';
 import { SkillLoader } from '../skills/loader.js';
 
 export interface SkillToolsConfig {

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createMemoryTools } from '../src/memory/memory-tools.js';
 import { SharedMemoryDB } from '../src/memory/shared-memory-db.js';
 import { MemoryReplicator } from '../src/memory/replication.js';
-import { ToolHandler } from '../src/mcp/tools.js';
+import type { ToolHandler } from '../src/plugins/types.js';
 import { EventEmitter } from 'events';
 import * as fs from 'fs';
 import * as os from 'os';
