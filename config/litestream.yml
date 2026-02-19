@@ -5,7 +5,7 @@
 dbs:
   - path: /home/paschal/.cortex/shared-memory-public.db
     replicas:
-      - type: gcs
+      - type: gs
         bucket: paschal-homelab-backups
         path: cortex/shared-memory/
         # Uses application default credentials (gcloud auth)

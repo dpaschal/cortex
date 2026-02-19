@@ -1,0 +1,15 @@
+[Unit]
+Description=Litestream backup for Cortex shared memory
+After=claudecluster.service
+Requires=claudecluster.service
+
+[Service]
+Type=simple
+Environment=GOOGLE_APPLICATION_CREDENTIALS=/home/paschal/.cortex/gcs-backup-key.json
+ExecStart=/usr/local/bin/litestream replicate -config /home/paschal/claudecluster/config/litestream.yml
+Restart=always
+RestartSec=10
+User=paschal
+
+[Install]
+WantedBy=multi-user.target
