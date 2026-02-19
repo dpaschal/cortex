@@ -28,6 +28,8 @@ import { randomUUID } from 'crypto';
 import chalk from 'chalk';
 import * as os from 'os';
 import { MessagingGateway } from './messaging/gateway.js';
+import { SharedMemoryDB } from './memory/shared-memory-db.js';
+import { MemoryReplicator } from './memory/replication.js';
 import { Inbox } from './messaging/inbox.js';
 import { DiscordAdapter } from './messaging/channels/discord.js';
 import { TelegramAdapter } from './messaging/channels/telegram.js';
@@ -152,6 +154,8 @@ export class Cortex extends EventEmitter {
   private approval: ApprovalWorkflow | null = null;
   private k8sAdapter: KubernetesAdapter | null = null;
   private mcpServer: ClusterMcpServer | null = null;
+  private sharedMemoryDb: SharedMemoryDB | null = null;
+  private memoryReplicator: MemoryReplicator | null = null;
   private authManager: AuthManager | null = null;
   private authzManager: AuthzManager | null = null;
   private secretsManager: SecretsManager | null = null;
@@ -370,6 +374,14 @@ export class Cortex extends EventEmitter {
       await this.mcpServer.stop();
     }
 
+    // Stop memory replicator and close shared memory DB
+    if (this.memoryReplicator) {
+      this.memoryReplicator.stop();
+    }
+    if (this.sharedMemoryDb) {
+      this.sharedMemoryDb.close();
+    }
+
     // Stop messaging gateway
     if (this.messagingGateway) {
       await this.messagingGateway.stop();
@@ -522,6 +534,23 @@ export class Cortex extends EventEmitter {
       clientPool: this.clientPool!,
       autoApprove: this.config.cluster.autoApprove ?? this.config.cluster.autoApproveEphemeral,
     });
+
+    // Shared memory database (Raft-replicated SQLite)
+    this.sharedMemoryDb = new SharedMemoryDB({
+      dataDir: configDir,
+      logger: this.logger,
+    });
+
+    this.memoryReplicator = new MemoryReplicator({
+      db: this.sharedMemoryDb,
+      raft: this.raft,
+      membership: this.membership,
+      clientPool: this.clientPool!,
+      logger: this.logger,
+    });
+
+    // Start periodic integrity checks (every 5 minutes)
+    this.memoryReplicator.startIntegrityChecks(5 * 60 * 1000);
 
     // Cluster state manager
     this.stateManager = new ClusterStateManager({
@@ -1035,6 +1064,8 @@ export class Cortex extends EventEmitter {
       raft: this.raft!,
       sessionId: this.sessionId,
       nodeId: this.nodeId,
+      sharedMemoryDb: this.sharedMemoryDb ?? undefined,
+      memoryReplicator: this.memoryReplicator ?? undefined,
     });
 
     this.logger.info('MCP server initialized');

@@ -20,6 +20,9 @@ import { createNetworkTools } from './network-tools.js';
 import { NetworkDB } from './network-db.js';
 import { createContextTools } from './context-tools.js';
 import { ContextDB } from './context-db.js';
+import { SharedMemoryDB } from '../memory/shared-memory-db.js';
+import { MemoryReplicator } from '../memory/replication.js';
+import { createMemoryTools } from '../memory/memory-tools.js';
 
 export interface McpServerConfig {
   logger: Logger;
@@ -31,6 +34,8 @@ export interface McpServerConfig {
   raft: RaftNode;
   sessionId: string;
   nodeId: string;
+  sharedMemoryDb?: SharedMemoryDB;
+  memoryReplicator?: MemoryReplicator;
 }
 
 export class ClusterMcpServer {
@@ -73,34 +78,48 @@ export class ClusterMcpServer {
       logger: this.config.logger,
     });
 
-    // Add timeline tools
-    const { tools: timelineTools, db } = createTimelineTools({
-      logger: this.config.logger,
-    });
-    this.timelineDb = db;
+    // Add shared memory tools (replaces timeline, network, context tools)
+    if (this.config.sharedMemoryDb && this.config.memoryReplicator) {
+      const memoryTools = createMemoryTools({
+        db: this.config.sharedMemoryDb,
+        replicator: this.config.memoryReplicator,
+        raft: this.config.raft,
+        logger: this.config.logger,
+        nodeId: this.config.nodeId,
+      });
 
-    for (const [name, handler] of timelineTools) {
-      clusterTools.set(name, handler);
-    }
+      for (const [name, handler] of memoryTools) {
+        clusterTools.set(name, handler);
+      }
 
-    // Add network tools
-    const { tools: networkTools, db: netDb } = createNetworkTools({
-      logger: this.config.logger,
-    });
-    this.networkDb = netDb;
+      this.config.logger.info('Memory tools registered', { count: memoryTools.size });
+    } else {
+      // Fallback: use legacy PostgreSQL-backed tools
+      this.config.logger.warn('SharedMemoryDB not available, falling back to legacy tools');
 
-    for (const [name, handler] of networkTools) {
-      clusterTools.set(name, handler);
-    }
+      const { tools: timelineTools, db } = createTimelineTools({
+        logger: this.config.logger,
+      });
+      this.timelineDb = db;
+      for (const [name, handler] of timelineTools) {
+        clusterTools.set(name, handler);
+      }
 
-    // Add context tools
-    const { tools: contextTools, db: ctxDb } = createContextTools({
-      logger: this.config.logger,
-    });
-    this.contextDb = ctxDb;
+      const { tools: networkTools, db: netDb } = createNetworkTools({
+        logger: this.config.logger,
+      });
+      this.networkDb = netDb;
+      for (const [name, handler] of networkTools) {
+        clusterTools.set(name, handler);
+      }
 
-    for (const [name, handler] of contextTools) {
-      clusterTools.set(name, handler);
+      const { tools: contextTools, db: ctxDb } = createContextTools({
+        logger: this.config.logger,
+      });
+      this.contextDb = ctxDb;
+      for (const [name, handler] of contextTools) {
+        clusterTools.set(name, handler);
+      }
     }
 
     return clusterTools;
