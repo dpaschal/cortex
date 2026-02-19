@@ -10,14 +10,12 @@ import { GrpcServer, GrpcServerConfig } from './grpc/server.js';
 import { GrpcClientPool } from './grpc/client.js';
 import { ResourceMonitor } from './agent/resource-monitor.js';
 import { TaskExecutor } from './agent/task-executor.js';
-import { HealthReporter } from './agent/health-reporter.js';
 import { RaftNode } from './cluster/raft.js';
 import { MembershipManager } from './cluster/membership.js';
 import { ClusterStateManager } from './cluster/state.js';
 import { TaskScheduler } from './cluster/scheduler.js';
 import { TailscaleDiscovery } from './discovery/tailscale.js';
 import { ApprovalWorkflow } from './discovery/approval.js';
-import { KubernetesAdapter } from './kubernetes/adapter.js';
 import { ClusterMcpServer } from './mcp/server.js';
 import { AuthManager, AuthzManager } from './security/auth.js';
 import { SecretsManager } from './security/secrets.js';
@@ -27,18 +25,15 @@ import { Command } from 'commander';
 import { randomUUID } from 'crypto';
 import chalk from 'chalk';
 import * as os from 'os';
-import { MessagingGateway } from './messaging/gateway.js';
 import { SharedMemoryDB } from './memory/shared-memory-db.js';
 import { MemoryReplicator } from './memory/replication.js';
-import { Inbox } from './messaging/inbox.js';
-import { DiscordAdapter } from './messaging/channels/discord.js';
-import { TelegramAdapter } from './messaging/channels/telegram.js';
 import { ProviderRouter } from './providers/router.js';
 import { AnthropicProvider } from './providers/anthropic.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { OllamaProvider } from './providers/ollama.js';
-import { SkillLoader } from './skills/loader.js';
-import type { ChannelAdapter } from './messaging/types.js';
+import { PluginLoader } from './plugins/loader.js';
+import { BUILTIN_PLUGINS } from './plugins/registry.js';
+import type { PluginContext } from './plugins/types.js';
 import type { LLMProvider } from './providers/types.js';
 
 export interface ClusterModeOptions {
@@ -146,14 +141,12 @@ export class Cortex extends EventEmitter {
   private clientPool: GrpcClientPool | null = null;
   private resourceMonitor: ResourceMonitor | null = null;
   private taskExecutor: TaskExecutor | null = null;
-  private healthReporter: HealthReporter | null = null;
   private raft: RaftNode | null = null;
   private membership: MembershipManager | null = null;
   private stateManager: ClusterStateManager | null = null;
   private scheduler: TaskScheduler | null = null;
   private tailscale: TailscaleDiscovery | null = null;
   private approval: ApprovalWorkflow | null = null;
-  private k8sAdapter: KubernetesAdapter | null = null;
   private mcpServer: ClusterMcpServer | null = null;
   private sharedMemoryDb: SharedMemoryDB | null = null;
   private memoryReplicator: MemoryReplicator | null = null;
@@ -161,10 +154,8 @@ export class Cortex extends EventEmitter {
   private authzManager: AuthzManager | null = null;
   private secretsManager: SecretsManager | null = null;
   private announcer: ClusterAnnouncer | null = null;
-  private messagingGateway: MessagingGateway | null = null;
-  private inbox: Inbox | null = null;
   private providerRouter: ProviderRouter | null = null;
-  private skillLoader: SkillLoader | null = null;
+  private pluginLoader: PluginLoader | null = null;
 
   private running = false;
   private mcpMode = false;
@@ -323,16 +314,14 @@ export class Cortex extends EventEmitter {
       // Initialize announcements
       this.initializeAnnouncements();
 
-      // Initialize agent components
+      // Initialize core agent (resource monitor + task executor for gRPC handlers)
       await this.initializeAgent();
 
-      // Initialize Kubernetes
-      await this.initializeKubernetes();
-
-      // Initialize OpenClaw-absorbed features
+      // Initialize providers (not a plugin yet)
       await this.initializeProviders();
-      await this.initializeMessaging();
-      await this.initializeSkills();
+
+      // Initialize plugins (replaces k8s, messaging, skills)
+      await this.initializePlugins();
 
       if (this.mcpMode) {
         // In MCP mode, start serving immediately — cluster joins in background
@@ -345,12 +334,18 @@ export class Cortex extends EventEmitter {
         this.membership!.on('rejoinNeeded', () => this.rejoinCluster());
 
         // Join cluster in background — don't block MCP
-        this.joinOrCreateCluster().catch((error) => {
+        this.joinOrCreateCluster().then(() => {
+          // Start plugin background work after cluster join
+          return this.pluginLoader!.startAll();
+        }).catch((error) => {
           this.logger.error('Background cluster join failed', { error });
         });
       } else {
         // Normal mode: join cluster first, then init MCP
         await this.joinOrCreateCluster();
+
+        // Start plugin background work
+        await this.pluginLoader!.startAll();
 
         // Listen for rejoin requests from membership (sleep/wake recovery)
         this.membership!.on('rejoinNeeded', () => this.rejoinCluster());
@@ -375,22 +370,17 @@ export class Cortex extends EventEmitter {
       await this.mcpServer.stop();
     }
 
+    // Stop all plugins (reverse order)
+    if (this.pluginLoader) {
+      await this.pluginLoader.stopAll();
+    }
+
     // Stop memory replicator and close shared memory DB
     if (this.memoryReplicator) {
       this.memoryReplicator.stop();
     }
     if (this.sharedMemoryDb) {
       this.sharedMemoryDb.close();
-    }
-
-    // Stop messaging gateway
-    if (this.messagingGateway) {
-      await this.messagingGateway.stop();
-    }
-
-    // Stop skill loader watchers
-    if (this.skillLoader) {
-      this.skillLoader.stop();
     }
 
     // Stop scheduler
@@ -406,11 +396,6 @@ export class Cortex extends EventEmitter {
     // Stop Raft
     if (this.raft) {
       this.raft.stop();
-    }
-
-    // Stop health reporter
-    if (this.healthReporter) {
-      this.healthReporter.stop();
     }
 
     // Stop resource monitor
@@ -608,8 +593,12 @@ export class Cortex extends EventEmitter {
     });
   }
 
+  /**
+   * Initialize core agent components needed for gRPC handler registration.
+   * Health reporting and event wiring are handled by the resource-monitor plugin.
+   * TODO: Unify with resource-monitor plugin when gRPC handlers are refactored.
+   */
   private async initializeAgent(): Promise<void> {
-    // Resource monitor
     this.resourceMonitor = new ResourceMonitor({
       logger: this.logger,
       pollIntervalMs: this.config.resources.pollIntervalMs,
@@ -618,64 +607,62 @@ export class Cortex extends EventEmitter {
       gamingCooldownMs: this.config.resources.gaming?.cooldownMs,
     });
 
-    // Task executor
     this.taskExecutor = new TaskExecutor({
       logger: this.logger,
     });
 
-    // Health reporter
-    this.healthReporter = new HealthReporter({
-      logger: this.logger,
-      resourceMonitor: this.resourceMonitor,
-      taskExecutor: this.taskExecutor,
-      checkIntervalMs: this.config.health.checkIntervalMs,
-      memoryThresholdPercent: this.config.health.thresholds?.memoryPercent,
-      cpuThresholdPercent: this.config.health.thresholds?.cpuPercent,
-      diskThresholdPercent: this.config.health.thresholds?.diskPercent,
-    });
-
-    // Start monitoring
     await this.resourceMonitor.start();
-    this.healthReporter.start();
+    this.logger.info('Agent core initialized (resource monitor + task executor)');
+  }
 
-    // Forward resource updates to membership
-    this.resourceMonitor.on('snapshot', (snapshot) => {
-      const protoResources = this.resourceMonitor!.toProtoResources();
-      if (protoResources) {
-        this.membership?.updateNodeResources(this.nodeId, {
-          cpuCores: protoResources.cpu_cores,
-          memoryBytes: parseInt(protoResources.memory_bytes),
-          memoryAvailableBytes: parseInt(protoResources.memory_available_bytes),
-          gpus: protoResources.gpus.map(g => ({
-            name: g.name,
-            memoryBytes: parseInt(g.memory_bytes),
-            memoryAvailableBytes: parseInt(g.memory_available_bytes),
-            utilizationPercent: g.utilization_percent,
-            inUseForGaming: g.in_use_for_gaming,
-          })),
-          diskBytes: parseInt(protoResources.disk_bytes),
-          diskAvailableBytes: parseInt(protoResources.disk_available_bytes),
-          cpuUsagePercent: protoResources.cpu_usage_percent,
-          gamingDetected: protoResources.gaming_detected,
+  private async initializePlugins(): Promise<void> {
+    this.pluginLoader = new PluginLoader(this.logger);
+
+    const pluginEvents = new EventEmitter();
+
+    // Forward resource snapshots from plugins to membership
+    pluginEvents.on('resource:snapshot', (snapshot) => {
+      if (this.membership && snapshot) {
+        this.membership.updateNodeResources(this.nodeId, {
+          cpuCores: snapshot.cpuCores ?? snapshot.cpu?.cores ?? 0,
+          memoryBytes: snapshot.memoryBytes ?? snapshot.memory?.total ?? 0,
+          memoryAvailableBytes: snapshot.memoryAvailableBytes ?? snapshot.memory?.available ?? 0,
+          gpus: snapshot.gpus ?? [],
+          diskBytes: snapshot.diskBytes ?? snapshot.disk?.total ?? 0,
+          diskAvailableBytes: snapshot.diskAvailableBytes ?? snapshot.disk?.available ?? 0,
+          cpuUsagePercent: snapshot.cpuUsagePercent ?? snapshot.cpu?.usage ?? 0,
+          gamingDetected: snapshot.gamingDetected ?? false,
         });
       }
     });
 
-    this.logger.info('Agent components initialized');
-  }
-
-  private async initializeKubernetes(): Promise<void> {
-    this.k8sAdapter = new KubernetesAdapter({
+    const ctx: PluginContext = {
+      raft: this.raft!,
+      membership: this.membership!,
+      scheduler: this.scheduler!,
+      stateManager: this.stateManager!,
+      clientPool: this.clientPool!,
+      sharedMemoryDb: this.sharedMemoryDb!,
+      memoryReplicator: this.memoryReplicator!,
       logger: this.logger,
-      kubeconfigPath: this.config.kubernetes.kubeconfigPath ?? undefined,
-    });
+      nodeId: this.nodeId,
+      sessionId: this.sessionId,
+      config: {},
+      events: pluginEvents,
+    };
 
-    try {
-      const clusters = await this.k8sAdapter.discoverClusters();
-      this.logger.info('Kubernetes clusters discovered', { count: clusters.length });
-    } catch (error) {
-      this.logger.warn('Failed to discover Kubernetes clusters', { error });
-    }
+    const pluginsConfig = this.config.plugins ?? {
+      'memory': { enabled: true },
+      'cluster-tools': { enabled: true },
+      'resource-monitor': { enabled: true },
+      'updater': { enabled: true },
+    };
+
+    await this.pluginLoader.loadAll(pluginsConfig, ctx, BUILTIN_PLUGINS);
+    this.logger.info('Plugins loaded', {
+      count: this.pluginLoader.getAllTools().size,
+      tools: [...this.pluginLoader.getAllTools().keys()],
+    });
   }
 
   private async initializeProviders(): Promise<void> {
@@ -714,66 +701,6 @@ export class Cortex extends EventEmitter {
       primary: provConfig.primary,
       fallback: provConfig.fallback,
     });
-  }
-
-  private async initializeMessaging(): Promise<void> {
-    const msgConfig = this.config.messaging;
-    if (!msgConfig?.enabled) return;
-
-    const adapters: ChannelAdapter[] = [];
-
-    if (msgConfig.channels?.discord?.enabled && msgConfig.channels.discord.token) {
-      adapters.push(new DiscordAdapter({
-        token: msgConfig.channels.discord.token,
-        guildId: msgConfig.channels.discord.guildId,
-      }));
-    }
-
-    if (msgConfig.channels?.telegram?.enabled && msgConfig.channels.telegram.token) {
-      adapters.push(new TelegramAdapter({
-        token: msgConfig.channels.telegram.token,
-      }));
-    }
-
-    if (adapters.length === 0) {
-      this.logger.warn('Messaging enabled but no channels configured');
-      return;
-    }
-
-    const inboxPath = msgConfig.inboxPath
-      ? msgConfig.inboxPath.replace('~', os.homedir())
-      : path.join(os.homedir(), '.cortex', 'inbox');
-    this.inbox = new Inbox(inboxPath);
-
-    this.messagingGateway = new MessagingGateway({
-      adapters,
-      raft: this.raft!,
-      agentName: msgConfig.agent ?? 'Cipher',
-      onMessage: async (message) => {
-        await this.inbox!.writeMessage({
-          from: `${message.channelType}:${message.username}`,
-          to: msgConfig.agent ?? 'Cipher',
-          content: message.content,
-          type: 'info',
-        });
-        this.logger.info('Incoming message', { channel: message.channelType, from: message.username });
-      },
-    });
-
-    this.logger.info('Messaging gateway initialized', {
-      agent: msgConfig.agent,
-      channels: adapters.map(a => a.name),
-    });
-  }
-
-  private async initializeSkills(): Promise<void> {
-    const skillConfig = this.config.skills;
-    if (!skillConfig?.enabled) return;
-
-    const dirs = (skillConfig.directories ?? []).map(d => d.replace('~', os.homedir()));
-    this.skillLoader = new SkillLoader(dirs);
-    await this.skillLoader.loadAll();
-    this.logger.info('Skills loaded', { count: this.skillLoader.listSkills().length });
   }
 
   private async joinOrCreateCluster(): Promise<void> {
@@ -1058,21 +985,15 @@ export class Cortex extends EventEmitter {
   private async initializeMcp(): Promise<void> {
     this.mcpServer = new ClusterMcpServer({
       logger: this.logger,
-      stateManager: this.stateManager!,
-      membership: this.membership!,
-      scheduler: this.scheduler!,
-      k8sAdapter: this.k8sAdapter!,
-      clientPool: this.clientPool!,
-      raft: this.raft!,
-      sessionId: this.sessionId,
-      nodeId: this.nodeId,
-      sharedMemoryDb: this.sharedMemoryDb ?? undefined,
-      memoryReplicator: this.memoryReplicator ?? undefined,
+      tools: this.pluginLoader!.getAllTools(),
+      resources: this.pluginLoader!.getAllResources(),
     });
 
-    this.logger.info('MCP server initialized');
+    this.logger.info('MCP server initialized', {
+      tools: this.pluginLoader!.getAllTools().size,
+      resources: this.pluginLoader!.getAllResources().size,
+    });
 
-    // In MCP mode, start the server (uses stdio for communication)
     if (this.mcpMode) {
       this.logger.info('Starting MCP server in stdio mode');
       await this.mcpServer.start();
