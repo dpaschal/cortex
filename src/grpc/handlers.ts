@@ -355,6 +355,61 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
     ) => {
       callback(null, { entries: [] });
     },
+
+    ForwardMemoryWrite: async (
+      call: grpc.ServerUnaryCall<any, any>,
+      callback: grpc.sendUnaryData<any>
+    ) => {
+      try {
+        const request = call.request;
+
+        // Only the leader should handle forwarded writes
+        if (raft.getState() !== 'leader') {
+          callback(null, {
+            success: false,
+            error: 'Not the leader',
+          });
+          return;
+        }
+
+        const sql = request.sql as string;
+        const params = JSON.parse(request.params || '[]');
+        const checksum = request.checksum as string;
+        const classification = request.classification || undefined;
+        const table = request.table || undefined;
+
+        // Verify checksum
+        const crypto = require('crypto');
+        const expectedChecksum = crypto
+          .createHash('sha256')
+          .update(sql + JSON.stringify(params))
+          .digest('hex');
+
+        if (checksum !== expectedChecksum) {
+          callback(null, {
+            success: false,
+            error: 'Checksum verification failed',
+          });
+          return;
+        }
+
+        // Append to Raft log
+        const entry = { sql, params, checksum, classification, table };
+        const data = Buffer.from(JSON.stringify(entry));
+        const result = await raft.appendEntry('memory_write', data);
+
+        callback(null, {
+          success: result.success,
+          error: result.success ? '' : 'Failed to append to Raft log',
+        });
+      } catch (error) {
+        logger.error('ForwardMemoryWrite failed', { error });
+        callback(null, {
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
   };
 }
 

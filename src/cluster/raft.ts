@@ -20,7 +20,8 @@ export type LogEntryType =
   | 'task_complete'
   | 'node_join'
   | 'node_leave'
-  | 'context_update';
+  | 'context_update'
+  | 'memory_write';
 
 export interface RaftConfig {
   nodeId: string;
@@ -601,6 +602,7 @@ export class RaftNode extends EventEmitter {
       node_join: 'LOG_ENTRY_TYPE_NODE_JOIN',
       node_leave: 'LOG_ENTRY_TYPE_NODE_LEAVE',
       context_update: 'LOG_ENTRY_TYPE_CONTEXT_UPDATE',
+      memory_write: 'LOG_ENTRY_TYPE_MEMORY_WRITE',
     };
     return mapping[type] || 'LOG_ENTRY_TYPE_UNKNOWN';
   }

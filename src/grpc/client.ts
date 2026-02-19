@@ -244,6 +244,16 @@ export class ClusterClient {
   async queryContext(request: QueryContextRequest): Promise<QueryContextResponse> {
     return this.pool.call(this.client, 'QueryContext', request);
   }
+
+  async forwardMemoryWrite(request: {
+    sql: string;
+    params: string;
+    checksum: string;
+    classification: string;
+    table: string;
+  }): Promise<{ success: boolean; error: string }> {
+    return this.pool.call(this.client, 'ForwardMemoryWrite', request);
+  }
 }
 
 export class RaftClient {

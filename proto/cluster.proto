@@ -29,6 +29,9 @@ service ClusterService {
   rpc RelayToSession(RelayRequest) returns (RelayResponse);
   rpc PublishContext(PublishContextRequest) returns (PublishContextResponse);
   rpc QueryContext(QueryContextRequest) returns (QueryContextResponse);
+
+  // Shared memory write forwarding (follower -> leader)
+  rpc ForwardMemoryWrite(MemoryWriteRequest) returns (MemoryWriteResponse);
 }
 
 // RaftService handles consensus protocol
@@ -360,6 +363,7 @@ enum LogEntryType {
   LOG_ENTRY_TYPE_NODE_JOIN = 5;
   LOG_ENTRY_TYPE_NODE_LEAVE = 6;
   LOG_ENTRY_TYPE_CONTEXT_UPDATE = 7;
+  LOG_ENTRY_TYPE_MEMORY_WRITE = 8;
 }
 
 message AppendEntriesResponse {
@@ -515,4 +519,21 @@ message QueryContextRequest {
 
 message QueryContextResponse {
   repeated ContextEntry entries = 1;
+}
+
+// ============================================================================
+// Shared Memory Messages
+// ============================================================================
+
+message MemoryWriteRequest {
+  string sql = 1;
+  string params = 2;       // JSON-encoded array
+  string checksum = 3;     // SHA-256 of sql + params
+  string classification = 4;
+  string table = 5;
+}
+
+message MemoryWriteResponse {
+  bool success = 1;
+  string error = 2;
 }
