@@ -32,6 +32,9 @@ service ClusterService {
 
   // Shared memory write forwarding (follower -> leader)
   rpc ForwardMemoryWrite(MemoryWriteRequest) returns (MemoryWriteResponse);
+
+  // Shared memory snapshot transfer (new node <- leader)
+  rpc RequestMemorySnapshot(MemorySnapshotRequest) returns (stream MemorySnapshotChunk);
 }
 
 // RaftService handles consensus protocol
@@ -536,4 +539,16 @@ message MemoryWriteRequest {
 message MemoryWriteResponse {
   bool success = 1;
   string error = 2;
+}
+
+message MemorySnapshotRequest {
+  string requesting_node_id = 1;
+}
+
+message MemorySnapshotChunk {
+  bytes data = 1;
+  int64 offset = 2;
+  int64 total_size = 3;
+  bool done = 4;
+  string checksum = 5;  // SHA-256 of complete file, sent with done=true
 }

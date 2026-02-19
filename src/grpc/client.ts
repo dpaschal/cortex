@@ -254,6 +254,18 @@ export class ClusterClient {
   }): Promise<{ success: boolean; error: string }> {
     return this.pool.call(this.client, 'ForwardMemoryWrite', request);
   }
+
+  requestMemorySnapshot(request: {
+    requesting_node_id: string;
+  }): grpc.ClientReadableStream<{
+    data: Buffer;
+    offset: string;
+    total_size: string;
+    done: boolean;
+    checksum: string;
+  }> {
+    return this.pool.callStream(this.client, 'RequestMemorySnapshot', request);
+  }
 }
 
 export class RaftClient {

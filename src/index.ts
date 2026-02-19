@@ -547,6 +547,7 @@ export class Cortex extends EventEmitter {
       membership: this.membership,
       clientPool: this.clientPool!,
       logger: this.logger,
+      nodeId: this.nodeId,
     });
 
     // Start periodic integrity checks (every 5 minutes)

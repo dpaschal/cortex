@@ -1,0 +1,11 @@
+# Litestream configuration for cortex shared memory backup
+# Only runs on the leader node (forge)
+# Backs up the PUBLIC-only filtered replica, NOT the full database
+
+dbs:
+  - path: /home/paschal/.cortex/shared-memory-public.db
+    replicas:
+      - type: gcs
+        bucket: paschal-homelab-backups
+        path: cortex/shared-memory/
+        # Uses application default credentials (gcloud auth)

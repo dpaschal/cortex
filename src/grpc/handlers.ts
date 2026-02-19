@@ -1,4 +1,8 @@
 import * as grpc from '@grpc/grpc-js';
+import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 import { Logger } from 'winston';
 import { MembershipManager, NodeInfo } from '../cluster/membership.js';
 import { RaftNode } from '../cluster/raft.js';
@@ -408,6 +412,50 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
           success: false,
           error: error instanceof Error ? error.message : 'Unknown error',
         });
+      }
+    },
+
+    RequestMemorySnapshot: async (
+      call: grpc.ServerWritableStream<any, any>
+    ) => {
+      try {
+        const requestingNode = call.request.requesting_node_id;
+        logger.info('Memory snapshot requested', { by: requestingNode });
+
+        const dbPath = path.join(
+          process.env.HOME || os.homedir(),
+          '.cortex',
+          'shared-memory.db'
+        );
+
+        if (!fs.existsSync(dbPath)) {
+          call.end();
+          return;
+        }
+
+        const fileBuffer = fs.readFileSync(dbPath);
+        const totalSize = fileBuffer.length;
+        const checksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+        const CHUNK_SIZE = 64 * 1024; // 64KB chunks
+
+        for (let offset = 0; offset < totalSize; offset += CHUNK_SIZE) {
+          const chunk = fileBuffer.subarray(offset, Math.min(offset + CHUNK_SIZE, totalSize));
+          const isDone = offset + CHUNK_SIZE >= totalSize;
+
+          call.write({
+            data: chunk,
+            offset: offset.toString(),
+            total_size: totalSize.toString(),
+            done: isDone,
+            checksum: isDone ? checksum : '',
+          });
+        }
+
+        call.end();
+        logger.info('Memory snapshot sent', { to: requestingNode, size: totalSize });
+      } catch (error) {
+        logger.error('RequestMemorySnapshot failed', { error });
+        call.destroy(error instanceof Error ? error : new Error(String(error)));
       }
     },
   };

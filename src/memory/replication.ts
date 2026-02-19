@@ -1,5 +1,6 @@
 // src/memory/replication.ts
 import * as crypto from 'crypto';
+import * as fs from 'fs';
 import { Logger } from 'winston';
 import { RaftNode, LogEntry } from '../cluster/raft.js';
 import { MembershipManager } from '../cluster/membership.js';
@@ -12,6 +13,7 @@ export interface MemoryReplicatorConfig {
   membership: MembershipManager;
   clientPool: GrpcClientPool;
   logger: Logger;
+  nodeId?: string;
 }
 
 export interface WriteOptions {
@@ -43,6 +45,7 @@ export class MemoryReplicator {
   private membership: MembershipManager;
   private clientPool: GrpcClientPool;
   private logger: Logger;
+  private nodeId: string;
   private entryHandler: (entry: LogEntry) => void;
   private integrityInterval: NodeJS.Timeout | null = null;
 
@@ -52,6 +55,7 @@ export class MemoryReplicator {
     this.membership = config.membership;
     this.clientPool = config.clientPool;
     this.logger = config.logger;
+    this.nodeId = config.nodeId ?? 'unknown';
 
     // Subscribe to committed entries
     this.entryHandler = (entry: LogEntry) => this.handleCommittedEntry(entry);
@@ -237,6 +241,80 @@ export class MemoryReplicator {
     if (this.integrityInterval) {
       clearInterval(this.integrityInterval);
       this.integrityInterval = null;
+    }
+  }
+
+  // ================================================================
+  // Snapshot Transfer
+  // ================================================================
+
+  /**
+   * Request a full snapshot from the leader. Used when:
+   * - Node joins for the first time and has no shared-memory.db
+   * - Node was offline too long and Raft log has been truncated
+   * - Integrity check detects checksum mismatch
+   */
+  async requestSnapshot(): Promise<boolean> {
+    const leaderAddr = this.membership.getLeaderAddress();
+    if (!leaderAddr) {
+      this.logger.warn('Cannot request snapshot: no leader available');
+      return false;
+    }
+
+    try {
+      this.logger.info('Requesting memory snapshot from leader', { leaderAddr });
+
+      const client = new ClusterClient(this.clientPool, leaderAddr);
+      const stream = client.requestMemorySnapshot({
+        requesting_node_id: this.nodeId,
+      });
+
+      // Collect chunks into a buffer
+      const tmpPath = this.db.getPath() + '.snapshot';
+      const chunks: { data: Buffer; offset: number }[] = [];
+      let receivedChecksum = '';
+      let totalSize = 0;
+
+      await new Promise<void>((resolve, reject) => {
+        stream.on('data', (chunk: { data: Buffer; offset: string; total_size: string; done: boolean; checksum: string }) => {
+          chunks.push({ data: chunk.data, offset: parseInt(chunk.offset) });
+          totalSize = parseInt(chunk.total_size);
+          if (chunk.done) {
+            receivedChecksum = chunk.checksum;
+          }
+        });
+        stream.on('end', () => resolve());
+        stream.on('error', (err: Error) => reject(err));
+      });
+
+      if (chunks.length === 0) {
+        this.logger.warn('Empty snapshot received from leader');
+        return false;
+      }
+
+      // Write chunks to temporary file
+      const fileBuffer = Buffer.alloc(totalSize);
+      for (const chunk of chunks) {
+        chunk.data.copy(fileBuffer, chunk.offset);
+      }
+
+      // Verify checksum
+      const actualChecksum = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+      if (receivedChecksum && actualChecksum !== receivedChecksum) {
+        this.logger.error('Snapshot checksum mismatch', { expected: receivedChecksum, actual: actualChecksum });
+        return false;
+      }
+
+      // Write to temp file, then replace current DB
+      fs.writeFileSync(tmpPath, fileBuffer);
+      this.db.close();
+      fs.renameSync(tmpPath, this.db.getPath());
+
+      this.logger.info('Memory snapshot applied successfully', { size: fileBuffer.length });
+      return true;
+    } catch (error) {
+      this.logger.error('Snapshot request failed', { error });
+      return false;
     }
   }
 
