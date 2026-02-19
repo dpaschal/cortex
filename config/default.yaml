@@ -189,6 +189,8 @@ plugins:
     enabled: true
   cluster-tools:
     enabled: true
+  task-engine:
+    enabled: true
   resource-monitor:
     enabled: true
   updater:

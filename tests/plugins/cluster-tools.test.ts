@@ -55,17 +55,13 @@ describe('ClusterToolsPlugin', () => {
     expect(plugin.version).toBe('1.0.0');
   });
 
-  it('should initialize and expose cluster tools (no k8s, no updater)', async () => {
+  it('should initialize and expose cluster tools (no k8s, no updater, no task tools)', async () => {
     await plugin.init(createMockContext());
     const tools = plugin.getTools();
 
     // Should have core cluster tools
     expect(tools.has('cluster_status')).toBe(true);
     expect(tools.has('list_nodes')).toBe(true);
-    expect(tools.has('submit_task')).toBe(true);
-    expect(tools.has('get_task_result')).toBe(true);
-    expect(tools.has('run_distributed')).toBe(true);
-    expect(tools.has('dispatch_subagents')).toBe(true);
     expect(tools.has('scale_cluster')).toBe(true);
 
     // Should have session/context tools
@@ -83,8 +79,14 @@ describe('ClusterToolsPlugin', () => {
     // Should NOT have updater tool
     expect(tools.has('initiate_rolling_update')).toBe(false);
 
-    // Should have 11 tools (16 total - 4 k8s - 1 updater)
-    expect(tools.size).toBe(11);
+    // Should NOT have task tools (moved to task-engine plugin)
+    expect(tools.has('submit_task')).toBe(false);
+    expect(tools.has('get_task_result')).toBe(false);
+    expect(tools.has('run_distributed')).toBe(false);
+    expect(tools.has('dispatch_subagents')).toBe(false);
+
+    // Should have 7 tools (16 total - 4 k8s - 1 updater - 4 task)
+    expect(tools.size).toBe(7);
   });
 
   it('should expose cluster resources', async () => {

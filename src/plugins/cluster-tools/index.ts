@@ -33,6 +33,8 @@ export class ClusterToolsPlugin implements Plugin {
     const excludeTools = [
       'k8s_list_clusters', 'k8s_submit_job', 'k8s_get_resources', 'k8s_scale',
       'initiate_rolling_update',
+      // Task tools moved to task-engine plugin
+      'submit_task', 'get_task_result', 'run_distributed', 'dispatch_subagents',
     ];
     for (const [name, handler] of allTools) {
       if (!excludeTools.includes(name)) {
