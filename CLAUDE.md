@@ -1,4 +1,4 @@
-# Claude Cluster - Project Instructions
+# Cortex - Project Instructions
 
 ## Superpowers Integration
 
@@ -18,7 +18,7 @@ This project uses the **superpowers** plugin for all development work. Before st
 
 ## Project Context
 
-Claude Cluster is a peer-to-peer compute mesh for distributed Claude sessions:
+Cortex is a distributed AI mesh for peer-to-peer compute:
 
 - **Raft consensus** for leader election across nodes
 - **gRPC + Protocol Buffers** for inter-node communication
@@ -41,10 +41,10 @@ Claude Cluster is a peer-to-peer compute mesh for distributed Claude sessions:
 
 | Node | Tailscale IP | Role | Status |
 |------|--------------|------|--------|
-| forge | 100.94.211.117 | Leader (seed) | systemd service, auto-start |
-| hammer | 100.73.18.82 | Follower | systemd service, auto-start |
-| htnas02 | 100.103.240.34 | Follower (72c/756GB/Tesla P4) | systemd service, auto-start |
-| anvil | 100.69.42.106 | Follower (NixOS, hosts cerebrus DB) | NixOS systemd service, auto-start |
+| forge | 100.94.211.117 | Leader (seed) | cortex.service, auto-start |
+| hammer | 100.73.18.82 | Follower | cortex.service, auto-start |
+| htnas02 | 100.103.240.34 | Follower (72c/756GB/Tesla P4) | cortex.service, auto-start |
+| anvil | 100.69.42.106 | Follower (NixOS, hosts cerebrus DB) | NixOS cortex.service, auto-start |
 | terminus-1 | 100.120.202.76 | Leader eligible | manual start |
 | rog2 | 100.104.78.123 | Leader eligible | offline (gaming PC) |
 
@@ -82,15 +82,15 @@ The terminus node doesn't have a persistent node ID file, so it generates a rand
 
 **To fix on terminus:**
 ```bash
-mkdir -p ~/.claudecluster
-echo "60919007" > ~/.claudecluster/node-id
+mkdir -p ~/.cortex
+echo "60919007" > ~/.cortex/node-id
 # After restart, node ID will be: terminus-60919007
 ```
 
 Or regenerate a fresh one:
 ```bash
-mkdir -p ~/.claudecluster
-echo "$(uuidgen | cut -c1-8)" > ~/.claudecluster/node-id
+mkdir -p ~/.cortex
+echo "$(uuidgen | cut -c1-8)" > ~/.cortex/node-id
 ```
 
 ## Development Commands

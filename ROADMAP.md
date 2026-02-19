@@ -1,4 +1,4 @@
-# Claude Cluster Roadmap
+# Cortex Roadmap
 
 ## Current Status: Phase 1 Complete
 
@@ -53,7 +53,7 @@
 
 ## Feature Requests
 
-Track feature requests via [GitHub Issues](https://github.com/dpaschal/claudecluster/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
+Track feature requests via [GitHub Issues](https://github.com/dpaschal/cortex/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement).
 
 ## Milestones
 

@@ -1,11 +1,11 @@
-# Contributing to Claude Cluster
+# Contributing to Cortex
 
 Thank you for your interest in contributing! This document provides guidelines for contributing to the project.
 
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/claudecluster.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/cortex.git`
 3. Create a branch: `git checkout -b feature/your-feature`
 4. Make your changes
 5. Push and create a Pull Request
@@ -61,7 +61,7 @@ Types: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 
 ## Reporting Bugs
 
-Use the [bug report template](https://github.com/dpaschal/claudecluster/issues/new?labels=bug) and include:
+Use the [bug report template](https://github.com/dpaschal/cortex/issues/new?labels=bug) and include:
 
 - Steps to reproduce
 - Expected behavior
@@ -71,7 +71,7 @@ Use the [bug report template](https://github.com/dpaschal/claudecluster/issues/n
 
 ## Requesting Features
 
-Use the [feature request template](https://github.com/dpaschal/claudecluster/issues/new?labels=enhancement) and include:
+Use the [feature request template](https://github.com/dpaschal/cortex/issues/new?labels=enhancement) and include:
 
 - Use case description
 - Proposed solution
@@ -80,7 +80,7 @@ Use the [feature request template](https://github.com/dpaschal/claudecluster/iss
 ## Project Structure
 
 ```
-claudecluster/
+cortex/
 ├── src/
 │   ├── agent/       # Node agent (monitoring, execution)
 │   ├── cluster/     # Raft, scheduling, membership
@@ -97,8 +97,8 @@ claudecluster/
 
 ## Questions?
 
-- Open a [discussion](https://github.com/dpaschal/claudecluster/discussions)
-- Check the [wiki](https://github.com/dpaschal/claudecluster/wiki)
+- Open a [discussion](https://github.com/dpaschal/cortex/discussions)
+- Check the [wiki](https://github.com/dpaschal/cortex/wiki)
 
 ## License
 
