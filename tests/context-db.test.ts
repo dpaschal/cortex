@@ -1,3 +1,7 @@
+// LEGACY: This test file covers the old PostgreSQL-backed tools.
+// These tools have been replaced by src/memory/memory-tools.ts.
+// Kept for reference until migration is fully verified.
+// See tests/memory-tools.test.ts for the replacement tests.
 // tests/context-db.test.ts
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ContextDB, ContextEntry, ContextCategory } from '../src/mcp/context-db.js';
