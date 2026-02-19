@@ -21,7 +21,15 @@ export type LogEntryType =
   | 'node_join'
   | 'node_leave'
   | 'context_update'
-  | 'memory_write';
+  | 'memory_write'
+  | 'task_assign'
+  | 'task_started'
+  | 'task_failed'
+  | 'task_cancel'
+  | 'task_retry'
+  | 'task_dead_letter'
+  | 'workflow_submit'
+  | 'workflow_advance';
 
 export interface RaftConfig {
   nodeId: string;
@@ -603,6 +611,14 @@ export class RaftNode extends EventEmitter {
       node_leave: 'LOG_ENTRY_TYPE_NODE_LEAVE',
       context_update: 'LOG_ENTRY_TYPE_CONTEXT_UPDATE',
       memory_write: 'LOG_ENTRY_TYPE_MEMORY_WRITE',
+      task_assign: 'LOG_ENTRY_TYPE_TASK_ASSIGN',
+      task_started: 'LOG_ENTRY_TYPE_TASK_STARTED',
+      task_failed: 'LOG_ENTRY_TYPE_TASK_FAILED',
+      task_cancel: 'LOG_ENTRY_TYPE_TASK_CANCEL',
+      task_retry: 'LOG_ENTRY_TYPE_TASK_RETRY',
+      task_dead_letter: 'LOG_ENTRY_TYPE_TASK_DEAD_LETTER',
+      workflow_submit: 'LOG_ENTRY_TYPE_WORKFLOW_SUBMIT',
+      workflow_advance: 'LOG_ENTRY_TYPE_WORKFLOW_ADVANCE',
     };
     return mapping[type] || 'LOG_ENTRY_TYPE_UNKNOWN';
   }

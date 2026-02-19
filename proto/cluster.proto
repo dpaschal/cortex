@@ -326,6 +326,36 @@ enum OutputType {
 }
 
 // ============================================================================
+// Workflow Messages
+// ============================================================================
+
+message RetryPolicy {
+  int32 max_retries = 1;
+  int64 backoff_ms = 2;
+  double backoff_multiplier = 3;
+  bool retryable = 4;
+}
+
+message SubmitWorkflowRequest {
+  string name = 1;
+  map<string, WorkflowTaskDef> tasks = 2;
+}
+
+message WorkflowTaskDef {
+  TaskSpec spec = 1;
+  repeated string depends_on = 2;
+  string condition = 3;
+}
+
+message WorkflowStatus {
+  string workflow_id = 1;
+  string name = 2;
+  string state = 3;
+  map<string, TaskStatus> task_statuses = 4;
+  string context_json = 5;
+}
+
+// ============================================================================
 // Raft Consensus Messages
 // ============================================================================
 
@@ -367,6 +397,14 @@ enum LogEntryType {
   LOG_ENTRY_TYPE_NODE_LEAVE = 6;
   LOG_ENTRY_TYPE_CONTEXT_UPDATE = 7;
   LOG_ENTRY_TYPE_MEMORY_WRITE = 8;
+  LOG_ENTRY_TYPE_TASK_ASSIGN = 10;
+  LOG_ENTRY_TYPE_TASK_STARTED = 11;
+  LOG_ENTRY_TYPE_TASK_FAILED = 12;
+  LOG_ENTRY_TYPE_TASK_CANCEL = 13;
+  LOG_ENTRY_TYPE_TASK_RETRY = 14;
+  LOG_ENTRY_TYPE_TASK_DEAD_LETTER = 15;
+  LOG_ENTRY_TYPE_WORKFLOW_SUBMIT = 16;
+  LOG_ENTRY_TYPE_WORKFLOW_ADVANCE = 17;
 }
 
 message AppendEntriesResponse {
