@@ -45,7 +45,7 @@ export class ClusterMcpServer {
     this.config = config;
     this.server = new Server(
       {
-        name: 'claudecluster',
+        name: 'cortex',
         version: '0.1.0',
       },
       {

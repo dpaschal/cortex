@@ -19,7 +19,7 @@ export function createTimelineTools(config: TimelineToolsConfig): { tools: Map<s
       properties: {
         name: {
           type: 'string',
-          description: 'Thread name, e.g., "claudecluster v0.2" or "fix gRPC field names"',
+          description: 'Thread name, e.g., "cortex v0.2" or "fix gRPC field names"',
         },
         description: {
           type: 'string',

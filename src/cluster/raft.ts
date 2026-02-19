@@ -31,7 +31,7 @@ export interface RaftConfig {
   heartbeatIntervalMs?: number;
   maxLogEntriesPerAppend?: number;
   nonVoting?: boolean; // If true, node never starts elections (observer only)
-  dataDir?: string; // Directory for persistent state (e.g., ~/.claudecluster)
+  dataDir?: string; // Directory for persistent state (e.g., ~/.cortex)
 }
 
 export interface PeerInfo {

@@ -494,8 +494,8 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       switch (action) {
         case 'add':
           return {
-            message: 'To add nodes, start the claudecluster agent on a new machine with Tailscale connected',
-            clusterTag: 'claudecluster',
+            message: 'To add nodes, start the cortex agent on a new machine with Tailscale connected',
+            clusterTag: 'cortex',
           };
 
         case 'remove':
@@ -573,7 +573,7 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       required: ['cluster', 'image'],
     },
     handler: async (args) => {
-      const jobName = `claudecluster-${Date.now()}`;
+      const jobName = `cortex-${Date.now()}`;
 
       const spec: K8sJobSpec = {
         name: jobName,

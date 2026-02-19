@@ -40,7 +40,7 @@ export class TailscaleDiscovery extends EventEmitter {
   constructor(config: TailscaleDiscoveryConfig) {
     super();
     this.config = config;
-    this.clusterTag = config.clusterTag ?? 'claudecluster';
+    this.clusterTag = config.clusterTag ?? 'cortex';
   }
 
   async start(): Promise<void> {

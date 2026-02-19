@@ -204,9 +204,9 @@ export class RollingUpdater extends EventEmitter {
       // --- Phase 2: Activate ---
 
       // Restart
-      this.progress('activate', nodeId, 'Restarting claudecluster service');
+      this.progress('activate', nodeId, 'Restarting cortex service');
       try {
-        await this.runShellOnNode(node, 'systemctl restart claudecluster', 10000);
+        await this.runShellOnNode(node, 'systemctl restart cortex', 10000);
       } catch {
         // Expected: connection drops when the service restarts
         this.progress('activate', nodeId, 'Connection dropped (expected during restart)');
@@ -273,7 +273,7 @@ export class RollingUpdater extends EventEmitter {
     }
 
     try {
-      await this.runShellOnNode(node, 'systemctl restart claudecluster', 10000);
+      await this.runShellOnNode(node, 'systemctl restart cortex', 10000);
     } catch {
       // Expected connection drop
     }
@@ -412,7 +412,7 @@ export class RollingUpdater extends EventEmitter {
     }
 
     // Restart self via systemctl. This will kill our process.
-    this.progress('leader-restart', this.config.selfNodeId, 'Executing systemctl restart claudecluster');
-    exec('systemctl restart claudecluster');
+    this.progress('leader-restart', this.config.selfNodeId, 'Executing systemctl restart cortex');
+    exec('systemctl restart cortex');
   }
 }

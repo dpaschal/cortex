@@ -1,16 +1,16 @@
-# Claude Cluster Configuration
+# Cortex Configuration
 # Default configuration file
 
 cluster:
   # Unique identifier for this cluster
-  id: claudecluster-default
+  id: cortex-default
 
   # Auto-approve ALL new nodes (for development/testing)
   autoApprove: true
 
   # Auto-approve new nodes with these tags
   autoApproveTags:
-    - tag:claudecluster-trusted
+    - tag:cortex-trusted
 
   # Auto-approve ephemeral (PXE-booted) nodes
   autoApproveEphemeral: true
@@ -29,7 +29,7 @@ node:
 
 network:
   # Tailscale tag for cluster discovery
-  tailscaleTag: claudecluster
+  tailscaleTag: cortex
 
   # Discovery poll interval
   discoveryIntervalMs: 30000
@@ -104,10 +104,10 @@ kubernetes:
 
 security:
   # Directory for certificates
-  certsDir: ~/.claudecluster/certs
+  certsDir: ~/.cortex/certs
 
   # Directory for secrets
-  secretsDir: ~/.claudecluster/secrets
+  secretsDir: ~/.cortex/secrets
 
   # Enable mTLS for gRPC
   enableMtls: false
@@ -127,14 +127,14 @@ logging:
 
 mcp:
   # MCP server settings
-  serverName: claudecluster
+  serverName: cortex
   serverVersion: "0.1.0"
 
 # Messaging gateway (absorbed from OpenClaw)
 messaging:
   enabled: false
   agent: "Cipher"
-  inboxPath: ~/.claudecluster/inbox
+  inboxPath: ~/.cortex/inbox
   channels:
     discord:
       enabled: false
@@ -163,7 +163,7 @@ providers:
 skills:
   enabled: false
   directories:
-    - ~/.claudecluster/skills
+    - ~/.cortex/skills
   hotReload: false
 
 # Initial seed nodes for joining an existing cluster

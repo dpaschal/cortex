@@ -94,7 +94,7 @@ export class AuthManager {
 
     // Note: In production, use a proper X.509 library like node-forge
     // This is a simplified placeholder
-    const caCert = this.createSelfSignedCert(privateKey, publicKey, 'ClaudeCluster CA', true);
+    const caCert = this.createSelfSignedCert(privateKey, publicKey, 'Cortex CA', true);
 
     const certPem = this.keyToPem(publicKey, 'PUBLIC KEY');
     const keyPem = this.keyToPem(privateKey, 'PRIVATE KEY');

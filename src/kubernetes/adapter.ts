@@ -190,7 +190,7 @@ export class KubernetesAdapter extends EventEmitter {
         name: spec.name,
         namespace,
         labels: {
-          'app.kubernetes.io/managed-by': 'claudecluster',
+          'app.kubernetes.io/managed-by': 'cortex',
           ...spec.labels,
         },
         annotations: spec.annotations,
