@@ -59,7 +59,7 @@ export class GrpcClientPool extends EventEmitter {
     }
 
     const proto = this.ensureProtoLoaded();
-    const claudecluster = proto.claudecluster as grpc.GrpcObject;
+    const cortex = proto.cortex as grpc.GrpcObject;
 
     const channelOptions: grpc.ChannelOptions = {
       'grpc.max_receive_message_length': 50 * 1024 * 1024,
@@ -69,9 +69,9 @@ export class GrpcClientPool extends EventEmitter {
       'grpc.keepalive_permit_without_calls': 1,
     };
 
-    const ClusterService = claudecluster.ClusterService as grpc.ServiceClientConstructor;
-    const RaftService = claudecluster.RaftService as grpc.ServiceClientConstructor;
-    const AgentService = claudecluster.AgentService as grpc.ServiceClientConstructor;
+    const ClusterService = cortex.ClusterService as grpc.ServiceClientConstructor;
+    const RaftService = cortex.RaftService as grpc.ServiceClientConstructor;
+    const AgentService = cortex.AgentService as grpc.ServiceClientConstructor;
 
     connection = {
       address,

@@ -63,22 +63,22 @@ export class GrpcServer extends EventEmitter {
       throw new Error('Proto not loaded. Call loadProto() first.');
     }
 
-    const claudecluster = this.protoDescriptor.claudecluster as grpc.GrpcObject;
+    const cortex = this.protoDescriptor.cortex as grpc.GrpcObject;
 
     if (implementations.clusterService) {
-      const ClusterService = claudecluster.ClusterService as grpc.ServiceClientConstructor;
+      const ClusterService = cortex.ClusterService as grpc.ServiceClientConstructor;
       this.server.addService(ClusterService.service, implementations.clusterService);
       this.config.logger.info('Registered ClusterService');
     }
 
     if (implementations.raftService) {
-      const RaftService = claudecluster.RaftService as grpc.ServiceClientConstructor;
+      const RaftService = cortex.RaftService as grpc.ServiceClientConstructor;
       this.server.addService(RaftService.service, implementations.raftService);
       this.config.logger.info('Registered RaftService');
     }
 
     if (implementations.agentService) {
-      const AgentService = claudecluster.AgentService as grpc.ServiceClientConstructor;
+      const AgentService = cortex.AgentService as grpc.ServiceClientConstructor;
       this.server.addService(AgentService.service, implementations.agentService);
       this.config.logger.info('Registered AgentService');
     }
@@ -185,8 +185,8 @@ export class GrpcServer extends EventEmitter {
       message += `  1. Stop the existing process: kill ${info.pid}\n`;
       message += `  2. Or use a different port: --port ${port + 1}\n`;
 
-      if (info.processName?.includes('node') || info.processName?.includes('claudecluster')) {
-        message += `\nThis appears to be another claudecluster instance. `;
+      if (info.processName?.includes('node') || info.processName?.includes('cortex')) {
+        message += `\nThis appears to be another cortex instance. `;
         message += `Stop it first or connect to the existing cluster.`;
       }
     } else {

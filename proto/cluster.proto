@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package claudecluster;
+package cortex;
 
 option java_multiple_files = true;
-option java_package = "com.dpaschal.claudecluster";
+option java_package = "com.dpaschal.cortex";
 
 // ============================================================================
 // Core Service Definitions
