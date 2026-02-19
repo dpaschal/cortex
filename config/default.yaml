@@ -183,6 +183,27 @@ skills:
     - ~/.cortex/skills
   hotReload: false
 
+# Plugin configuration — per-node enable/disable. Restart required.
+plugins:
+  memory:
+    enabled: true
+  cluster-tools:
+    enabled: true
+  resource-monitor:
+    enabled: true
+  updater:
+    enabled: true
+  skills:
+    enabled: false
+    directories:
+      - ~/.cortex/skills
+  messaging:
+    enabled: false
+    agent: "Cipher"
+    inboxPath: ~/.cortex/inbox
+  kubernetes:
+    enabled: false
+
 # Initial seed nodes for joining an existing cluster
 # NOTE: Don't list ALL nodes here - list nodes that should already be running
 # The first node to start becomes leader, others join via seeds

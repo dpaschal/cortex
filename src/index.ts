@@ -131,6 +131,7 @@ export interface ClusterConfig {
     directories?: string[];
     hotReload?: boolean;
   };
+  plugins?: Record<string, { enabled: boolean; [key: string]: unknown }>;
   seeds?: Array<{ address: string }>;
 }
 
