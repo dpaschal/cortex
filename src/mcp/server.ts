@@ -14,12 +14,6 @@ import { KubernetesAdapter, K8sJobSpec } from '../kubernetes/adapter.js';
 import { GrpcClientPool } from '../grpc/client.js';
 import { RaftNode } from '../cluster/raft.js';
 import { createTools, ToolHandler } from './tools.js';
-import { createTimelineTools } from './timeline-tools.js';
-import { TimelineDB } from './timeline-db.js';
-import { createNetworkTools } from './network-tools.js';
-import { NetworkDB } from './network-db.js';
-import { createContextTools } from './context-tools.js';
-import { ContextDB } from './context-db.js';
 import { SharedMemoryDB } from '../memory/shared-memory-db.js';
 import { MemoryReplicator } from '../memory/replication.js';
 import { createMemoryTools } from '../memory/memory-tools.js';
@@ -42,9 +36,6 @@ export class ClusterMcpServer {
   private config: McpServerConfig;
   private server: Server;
   private toolHandlers: Map<string, ToolHandler>;
-  private timelineDb: TimelineDB | null = null;
-  private networkDb: NetworkDB | null = null;
-  private contextDb: ContextDB | null = null;
 
   constructor(config: McpServerConfig) {
     this.config = config;
@@ -78,7 +69,7 @@ export class ClusterMcpServer {
       logger: this.config.logger,
     });
 
-    // Add shared memory tools (replaces timeline, network, context tools)
+    // Add shared memory tools
     if (this.config.sharedMemoryDb && this.config.memoryReplicator) {
       const memoryTools = createMemoryTools({
         db: this.config.sharedMemoryDb,
@@ -93,33 +84,6 @@ export class ClusterMcpServer {
       }
 
       this.config.logger.info('Memory tools registered', { count: memoryTools.size });
-    } else {
-      // Fallback: use legacy PostgreSQL-backed tools
-      this.config.logger.warn('SharedMemoryDB not available, falling back to legacy tools');
-
-      const { tools: timelineTools, db } = createTimelineTools({
-        logger: this.config.logger,
-      });
-      this.timelineDb = db;
-      for (const [name, handler] of timelineTools) {
-        clusterTools.set(name, handler);
-      }
-
-      const { tools: networkTools, db: netDb } = createNetworkTools({
-        logger: this.config.logger,
-      });
-      this.networkDb = netDb;
-      for (const [name, handler] of networkTools) {
-        clusterTools.set(name, handler);
-      }
-
-      const { tools: contextTools, db: ctxDb } = createContextTools({
-        logger: this.config.logger,
-      });
-      this.contextDb = ctxDb;
-      for (const [name, handler] of contextTools) {
-        clusterTools.set(name, handler);
-      }
     }
 
     return clusterTools;
@@ -250,15 +214,6 @@ export class ClusterMcpServer {
   }
 
   async stop(): Promise<void> {
-    if (this.timelineDb) {
-      await this.timelineDb.close();
-    }
-    if (this.networkDb) {
-      await this.networkDb.close();
-    }
-    if (this.contextDb) {
-      await this.contextDb.close();
-    }
     await this.server.close();
     this.config.logger.info('MCP server stopped');
   }
