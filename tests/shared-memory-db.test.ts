@@ -165,4 +165,46 @@ describe('SharedMemoryDB', () => {
       expect(db.getPath()).toBe(path.join(tmpDir, 'shared-memory.db'));
     });
   });
+
+  describe('generateWhereami', () => {
+    it('generates whereami.md with active threads', () => {
+      // Seed data
+      db.run('INSERT INTO timeline_projects (name) VALUES (?)', ['TestProject']);
+      db.run('INSERT INTO timeline_threads (name, status, project_id) VALUES (?, ?, ?)', ['Thread A', 'active', 1]);
+      db.run('INSERT INTO timeline_thoughts (thread_id, content, thought_type) VALUES (?, ?, ?)', [1, 'Did something important', 'progress']);
+      db.run('INSERT INTO timeline_thread_position (thread_id, current_thought_id) VALUES (?, ?)', [1, 1]);
+      db.run(`INSERT INTO timeline_context (key, value, category, pinned) VALUES (?, ?, ?, ?)`, ['project:test', '"test value"', 'project', 1]);
+
+      db.generateWhereami();
+
+      const mdPath = path.join(tmpDir, 'whereami.md');
+      expect(fs.existsSync(mdPath)).toBe(true);
+
+      const content = fs.readFileSync(mdPath, 'utf-8');
+      expect(content).toContain('# Cortex State');
+      expect(content).toContain('Thread A');
+      expect(content).toContain('Did something important');
+      expect(content).toContain('project:test');
+    });
+
+    it('includes recent thoughts section', () => {
+      db.run('INSERT INTO timeline_threads (name, status) VALUES (?, ?)', ['Thread B', 'active']);
+      db.run('INSERT INTO timeline_thoughts (thread_id, content, thought_type) VALUES (?, ?, ?)', [1, 'First thought', 'progress']);
+      db.run('INSERT INTO timeline_thoughts (thread_id, content, thought_type) VALUES (?, ?, ?)', [1, 'Second thought', 'decision']);
+
+      db.generateWhereami();
+
+      const content = fs.readFileSync(path.join(tmpDir, 'whereami.md'), 'utf-8');
+      expect(content).toContain('## Recent Thoughts');
+      expect(content).toContain('Second thought');
+    });
+
+    it('handles empty database gracefully', () => {
+      db.generateWhereami();
+
+      const content = fs.readFileSync(path.join(tmpDir, 'whereami.md'), 'utf-8');
+      expect(content).toContain('# Cortex State');
+      expect(content).toContain('No active threads');
+    });
+  });
 });

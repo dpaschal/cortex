@@ -23,9 +23,11 @@ export class SharedMemoryDB {
   private db: DatabaseType;
   private logger: Logger;
   private dbPath: string;
+  private dataDir: string;
 
   constructor(config: SharedMemoryDBConfig) {
     this.logger = config.logger;
+    this.dataDir = config.dataDir;
     this.dbPath = path.join(config.dataDir, 'shared-memory.db');
 
     // Ensure directory exists
@@ -375,6 +377,107 @@ export class SharedMemoryDB {
       hash.update(name + JSON.stringify(rows));
     }
     return hash.digest('hex');
+  }
+
+  // ================================================================
+  // Whereami Snapshot
+  // ================================================================
+
+  generateWhereami(): void {
+    const now = new Date().toISOString();
+    const lines: string[] = [`# Cortex State — ${now}`, ''];
+
+    // Active threads with positions
+    const threads = this.db.prepare(`
+      SELECT
+        t.id, t.name, t.status,
+        tp.current_thought_id,
+        ct.content AS current_thought_content,
+        ct.thought_type,
+        ct.created_at AS last_updated,
+        p.name AS project_name,
+        (SELECT COUNT(*) FROM timeline_thoughts th WHERE th.thread_id = t.id) AS thought_count
+      FROM timeline_threads t
+      LEFT JOIN timeline_thread_position tp ON tp.thread_id = t.id
+      LEFT JOIN timeline_thoughts ct ON ct.id = tp.current_thought_id
+      LEFT JOIN timeline_projects p ON p.id = t.project_id
+      WHERE t.status IN ('active', 'paused')
+      ORDER BY t.updated_at DESC
+    `).all() as Array<{
+      id: number; name: string; status: string;
+      current_thought_id: number | null;
+      current_thought_content: string | null;
+      thought_type: string | null;
+      last_updated: string | null;
+      project_name: string | null;
+      thought_count: number;
+    }>;
+
+    lines.push('## Active Threads');
+    if (threads.length === 0) {
+      lines.push('No active threads.', '');
+    } else {
+      for (const t of threads) {
+        const project = t.project_name ? ` (project: ${t.project_name})` : '';
+        const status = t.status === 'paused' ? ' [PAUSED]' : '';
+        lines.push(`- **#${t.id} ${t.name}**${project}${status} — ${t.thought_count} thoughts`);
+        if (t.current_thought_content) {
+          const truncated = t.current_thought_content.length > 200
+            ? t.current_thought_content.slice(0, 200) + '...'
+            : t.current_thought_content;
+          lines.push(`  Position: thought #${t.current_thought_id} — "${truncated}"`);
+        }
+      }
+      lines.push('');
+    }
+
+    // Pinned context
+    const context = this.db.prepare(`
+      SELECT key, category, label, value FROM timeline_context
+      WHERE pinned = 1
+      ORDER BY updated_at DESC
+    `).all() as Array<{ key: string; category: string; label: string | null; value: string }>;
+
+    lines.push('## Pinned Context');
+    if (context.length === 0) {
+      lines.push('No pinned context.', '');
+    } else {
+      for (const c of context) {
+        const label = c.label ? ` (${c.label})` : '';
+        const value = c.value.length > 150 ? c.value.slice(0, 150) + '...' : c.value;
+        lines.push(`- \`${c.key}\`${label}: ${value}`);
+      }
+      lines.push('');
+    }
+
+    // Recent thoughts (last 5 across all threads)
+    const recent = this.db.prepare(`
+      SELECT t.id, t.thread_id, t.content, t.thought_type, t.created_at,
+             th.name AS thread_name
+      FROM timeline_thoughts t
+      JOIN timeline_threads th ON th.id = t.thread_id
+      ORDER BY t.id DESC
+      LIMIT 5
+    `).all() as Array<{
+      id: number; thread_id: number; content: string;
+      thought_type: string; created_at: string; thread_name: string;
+    }>;
+
+    lines.push('## Recent Thoughts');
+    if (recent.length === 0) {
+      lines.push('No thoughts yet.', '');
+    } else {
+      for (const r of recent) {
+        const truncated = r.content.length > 200
+          ? r.content.slice(0, 200) + '...'
+          : r.content;
+        lines.push(`${r.id}. #${r.id} (${r.thought_type}, thread #${r.thread_id} ${r.thread_name}): ${truncated}`);
+      }
+      lines.push('');
+    }
+
+    const mdPath = path.join(this.dataDir, 'whereami.md');
+    fs.writeFileSync(mdPath, lines.join('\n'));
   }
 
   // ================================================================
