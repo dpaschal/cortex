@@ -8,7 +8,7 @@ export class UpdaterPlugin implements Plugin {
 
   async init(ctx: PluginContext): Promise<void> {
     this.tools.set('initiate_rolling_update', {
-      description: 'Initiate a rolling update across all cluster nodes. Leader coordinates: transfers dist/ to each follower, restarts them one at a time, then restarts self last. Requires leader role.',
+      description: 'Initiate a rolling update across all cluster nodes. Leader coordinates: transfers dist/ to each follower, restarts them one at a time, then restarts self last. Sends Telegram + wall notifications before each restart (Tap on Shoulder). Requires leader role.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -20,6 +20,15 @@ export class UpdaterPlugin implements Plugin {
         const { RollingUpdater } = await import('../../cluster/updater.js');
         const distDir = (ctx.config.distDir as string) ?? `${process.cwd()}/dist`;
 
+        // Build notifyFn: sends Telegram via messaging_notify tool
+        const notifyFn = async (_nodeId: string, message: string) => {
+          const tools = ctx.getTools?.();
+          const notifyTool = tools?.get('messaging_notify');
+          if (notifyTool) {
+            await notifyTool.handler({ message });
+          }
+        };
+
         const updater = new RollingUpdater({
           membership: ctx.membership,
           raft: ctx.raft,
@@ -27,6 +36,7 @@ export class UpdaterPlugin implements Plugin {
           logger: ctx.logger,
           selfNodeId: ctx.nodeId,
           distDir,
+          notifyFn,
         });
 
         // Preflight first

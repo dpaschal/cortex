@@ -16,6 +16,10 @@ export interface UpdaterConfig {
   selfNodeId: string;
   distDir: string;
   heartbeatIntervalMs?: number;
+  /** Called before restarting a node — sends Telegram + wall notification, waits grace period. */
+  notifyFn?: (nodeId: string, message: string) => Promise<void>;
+  /** Grace period (ms) to wait after notification before restarting. Default: 30000. */
+  preRestartGraceMs?: number;
 }
 
 export interface PreflightResult {
@@ -44,10 +48,46 @@ export class RollingUpdater extends EventEmitter {
   private config: UpdaterConfig;
   private heartbeatMs: number;
 
+  private preRestartGraceMs: number;
+
   constructor(config: UpdaterConfig) {
     super();
     this.config = config;
     this.heartbeatMs = config.heartbeatIntervalMs ?? 5000;
+    this.preRestartGraceMs = config.preRestartGraceMs ?? 30000;
+  }
+
+  /**
+   * Tap on Shoulder: notify before restarting a node.
+   * Sends Telegram notification + wall message on the target node, then waits grace period.
+   */
+  private async notifyBeforeRestart(node: NodeInfo): Promise<void> {
+    const shortName = node.nodeId.split('-')[0];
+    const graceSec = Math.round(this.preRestartGraceMs / 1000);
+    const msg = `🔄 ISSU: ${shortName} restarting in ${graceSec}s for rolling update. Wrap up any work on this node.`;
+
+    // Send Telegram notification via notifyFn
+    if (this.config.notifyFn) {
+      try {
+        await this.config.notifyFn(node.nodeId, msg);
+      } catch (err) {
+        this.config.logger.warn('Pre-restart Telegram notification failed', {
+          nodeId: node.nodeId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    // Send wall message on the target node
+    try {
+      await this.runShellOnNode(node, `wall "${msg}"`, 5000);
+    } catch {
+      // Best effort — node may not have wall or user sessions
+    }
+
+    // Wait grace period
+    this.progress('activate', node.nodeId, `Waiting ${graceSec}s grace period before restart...`);
+    await this.sleep(this.preRestartGraceMs);
   }
 
   /**
@@ -202,6 +242,9 @@ export class RollingUpdater extends EventEmitter {
       }
 
       // --- Phase 2: Activate ---
+
+      // Tap on Shoulder: notify before restart
+      await this.notifyBeforeRestart(node);
 
       // Restart
       this.progress('activate', nodeId, 'Restarting cortex service');
@@ -409,6 +452,12 @@ export class RollingUpdater extends EventEmitter {
     } catch (error) {
       this.config.logger.warn('Failed to create leader backup', { error });
       // Continue anyway — the build is already in place
+    }
+
+    // Tap on Shoulder: notify before leader restart
+    const selfNode = this.config.membership.getAllNodes().find(n => n.nodeId === this.config.selfNodeId);
+    if (selfNode) {
+      await this.notifyBeforeRestart(selfNode);
     }
 
     // Restart self via systemctl. This will kill our process.
