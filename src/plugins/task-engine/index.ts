@@ -61,8 +61,9 @@ export class TaskEnginePlugin implements Plugin {
     ctx.raft.on('entryCommitted', this.entryCommittedHandler);
 
     // Listen for node offline events for HA re-queue
-    this.nodeOfflineHandler = (nodeId: string) => {
-      this.handleNodeOffline(nodeId);
+    // membership emits the full NodeInfo object, not just the nodeId string
+    this.nodeOfflineHandler = (node: any) => {
+      this.handleNodeOffline(typeof node === 'string' ? node : node.nodeId);
     };
     ctx.membership.on('nodeOffline', this.nodeOfflineHandler);
   }
