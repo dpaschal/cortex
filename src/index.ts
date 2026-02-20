@@ -654,6 +654,8 @@ export class Cortex extends EventEmitter {
       sessionId: this.sessionId,
       config: {},
       events: pluginEvents,
+      provider: this.providerRouter ?? undefined,
+      getTools: () => this.pluginLoader!.getAllTools(),
     };
 
     const pluginsConfig = this.config.plugins ?? {

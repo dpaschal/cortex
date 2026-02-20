@@ -7,6 +7,7 @@ import { GrpcClientPool } from '../grpc/client.js';
 import { SharedMemoryDB } from '../memory/shared-memory-db.js';
 import { MemoryReplicator } from '../memory/replication.js';
 import { EventEmitter } from 'events';
+import type { LLMProvider } from '../providers/types.js';
 
 export interface ToolHandler {
   description: string;
@@ -40,6 +41,8 @@ export interface PluginContext {
   sessionId: string;
   config: Record<string, unknown>;
   events: EventEmitter;
+  provider?: LLMProvider;
+  getTools?: () => Map<string, ToolHandler>;
 }
 
 export interface Plugin {
