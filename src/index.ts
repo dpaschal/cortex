@@ -677,10 +677,10 @@ export class Cortex extends EventEmitter {
     if (!provConfig) return;
 
     const providers: Record<string, LLMProvider> = {};
-    if (provConfig.anthropic?.apiKey) {
+    if (provConfig.anthropic?.apiKey || process.env.ANTHROPIC_API_KEY) {
       providers.anthropic = new AnthropicProvider({
-        apiKey: provConfig.anthropic.apiKey,
-        model: provConfig.anthropic.model,
+        apiKey: provConfig.anthropic?.apiKey || undefined,
+        model: provConfig.anthropic?.model,
       });
     }
     if (provConfig.openai?.apiKey) {

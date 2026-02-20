@@ -18,20 +18,20 @@ describe('Plugin Config', () => {
     expect(config.plugins.kubernetes).toBeDefined();
   });
 
-  it('kubernetes, skills, and messaging should be disabled by default', () => {
+  it('kubernetes and skills should be disabled by default', () => {
     const configFile = fs.readFileSync('config/default.yaml', 'utf-8');
     const config = parseYaml(configFile);
     expect(config.plugins.kubernetes.enabled).toBe(false);
     expect(config.plugins.skills.enabled).toBe(false);
-    expect(config.plugins.messaging.enabled).toBe(false);
   });
 
-  it('memory, cluster-tools, resource-monitor, and updater should be enabled by default', () => {
+  it('memory, cluster-tools, resource-monitor, updater, and messaging should be enabled by default', () => {
     const configFile = fs.readFileSync('config/default.yaml', 'utf-8');
     const config = parseYaml(configFile);
     expect(config.plugins.memory.enabled).toBe(true);
     expect(config.plugins['cluster-tools'].enabled).toBe(true);
     expect(config.plugins['resource-monitor'].enabled).toBe(true);
     expect(config.plugins.updater.enabled).toBe(true);
+    expect(config.plugins.messaging.enabled).toBe(true);
   });
 });

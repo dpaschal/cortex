@@ -200,9 +200,13 @@ plugins:
     directories:
       - ~/.cortex/skills
   messaging:
-    enabled: false
+    enabled: true
     agent: "Cipher"
     inboxPath: ~/.cortex/inbox
+    channels:
+      telegram:
+        enabled: true
+        token: ""  # Set via TELEGRAM_BOT_TOKEN env var
   kubernetes:
     enabled: false
 
