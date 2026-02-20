@@ -1,6 +1,6 @@
 # Cortex Roadmap
 
-## Current Status: v0.5.0 — Plugin Architecture
+## Current Status: v0.6.0 — Distributed Task Execution
 
 ### Phase 1: Foundation
 - [x] Project structure and TypeScript setup
@@ -32,7 +32,7 @@
 
 ### Phase 5: MCP Server
 - [x] MCP server with stdio mode
-- [x] 24 MCP tools across 7 plugins
+- [x] 43 MCP tools across 8 plugins
 - [x] 3 cluster resources
 - [x] Claude Code integration
 
@@ -61,6 +61,14 @@
 - [x] systemd resume service
 - [x] Automatic cluster rejoin after laptop suspend
 
+### Phase 10: Distributed Task Execution
+- [x] Persistent task state in Raft-replicated SQLite (replaces in-memory TaskScheduler)
+- [x] Resource-aware scheduling with CPU/memory/GPU/disk/network scoring
+- [x] DAG workflow engine with sandboxed JS condition evaluation
+- [x] Task HA: re-queue with exponential backoff + dead letter queue
+- [x] Graceful node draining with task migration
+- [x] 12 MCP tools (task-engine plugin)
+
 ---
 
 ## Upcoming
@@ -73,7 +81,7 @@
 
 ### Takeover/Giveback
 - [ ] NetApp CDOT-style HA model
-- [ ] Automatic task re-queuing on node failure
+- [x] Automatic task re-queuing on node failure (delivered in task-engine)
 - [ ] Graceful takeover with resource migration
 - [ ] Giveback with state synchronization
 
@@ -108,8 +116,11 @@ Track feature requests via [GitHub Issues](https://github.com/dpaschal/cortex/is
 ### v0.4.0 - Shared Memory
 - Raft-replicated SQLite, timeline tracking, 12 memory tools
 
-### v0.5.0 - Plugin Architecture (current)
+### v0.5.0 - Plugin Architecture
 - Core + plugins separation, 7 built-in plugins, 24 tools, 474 tests
+
+### v0.6.0 - Distributed Task Execution (current)
+- Persistent task engine with Raft-replicated state, DAG workflows, dead letter queue, 8 plugins, 43 tools
 
 ### v1.0.0 - Production Ready
 - mTLS security, Sentinel analytics, Takeover/Giveback, comprehensive docs

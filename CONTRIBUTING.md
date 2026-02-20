@@ -90,13 +90,13 @@ cortex/
 │   ├── mcp/         # MCP server and tool/resource factories
 │   ├── memory/      # SharedMemoryDB, Raft replication
 │   ├── messaging/   # Gateway, Discord/Telegram, inbox
-│   ├── plugins/     # Plugin architecture (7 built-in plugins)
+│   ├── plugins/     # Plugin architecture (8 built-in plugins)
 │   ├── security/    # Auth, secrets
 │   └── skills/      # SKILL.md loader
 ├── proto/           # Protocol Buffer definitions
 ├── config/          # Configuration files
 ├── docs/            # Documentation and design plans
-└── tests/           # Test files (474+ tests)
+└── tests/           # Test files
 ```
 
 ### Writing a Plugin

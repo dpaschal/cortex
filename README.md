@@ -24,7 +24,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Cortex connects your machines into a single intelligent platform — P2P compute mesh with a pluggable architecture, Raft-replicated shared memory, distributed task execution, and Claude Code integration via MCP.
+Cortex connects your machines into a single intelligent platform — P2P compute mesh with a pluggable architecture, Raft-replicated shared memory, persistent distributed task execution with DAG workflows, and Claude Code integration via MCP.
 
 ## Overview
 
@@ -53,13 +53,14 @@ Cortex connects your machines into a single intelligent platform — P2P compute
 │  ┌──────────────────────────┴───────────────────────────────────┐   │
 │  │                      PLUGINS (per-node YAML)                  │   │
 │  ├──────────┬──────────┬──────────┬──────────┬────────────────┤   │
-│  │ Memory   │ Cluster  │ Resource │ Updater  │  Kubernetes    │   │
-│  │ 12 tools │ 12 tools │ Monitor  │ ISSU     │  4 tools       │   │
-│  ├──────────┼──────────┼──────────┴──────────┴────────────────┤   │
-│  │ Skills   │Messaging │    MCP Server (24 tools, 3 resources) │   │
-│  │ SKILL.md │ Discord  │    Collects tools from all plugins    │   │
-│  │ Hot-load │ Telegram │    Stdio mode for Claude Code         │   │
-│  └──────────┴──────────┴──────────────────────────────────────┘   │
+│  │ Memory   │ Cluster  │ Task     │ Updater  │  Kubernetes    │   │
+│  │ 12 tools │  7 tools │ Engine   │ ISSU     │  4 tools       │   │
+│  │          │          │ 12 tools │          │                │   │
+│  ├──────────┼──────────┼──────────┼──────────┴────────────────┤   │
+│  │ Skills   │Messaging │ Resource │  MCP Server (43 tools,     │   │
+│  │ SKILL.md │ Discord  │ Monitor  │    3 resources)             │   │
+│  │ Hot-load │ Telegram │          │  Stdio mode for Claude Code │   │
+│  └──────────┴──────────┴──────────┴───────────────────────────┘   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -79,7 +80,8 @@ Cortex uses a **core + plugins** architecture. Each node enables/disables plugin
 | Plugin | Tools | Description |
 |--------|-------|-------------|
 | **memory** | 12 | Timeline threads, thoughts, context — Raft-replicated across nodes |
-| **cluster-tools** | 12 | Cluster status, task submission, distributed execution, context sharing |
+| **cluster-tools** | 7 | Cluster status, membership, sessions, context sharing |
+| **task-engine** | 12 | Persistent task execution, DAG workflows, dead letter queue, node draining |
 | **resource-monitor** | — | CPU/GPU/memory/disk monitoring, health reporting (no MCP tools) |
 | **updater** | 1 | ISSU rolling updates with backup and rollback |
 | **kubernetes** | 4 | K8s/K3s cluster discovery, job submission, scaling |
@@ -87,7 +89,7 @@ Cortex uses a **core + plugins** architecture. Each node enables/disables plugin
 | **messaging** | 5 | Discord (@DALEK), Telegram bots, inbox with read/unread tracking |
 
 ### Claude Code Integration (MCP)
-- **24 MCP Tools** — Collected from all enabled plugins into a single MCP server
+- **43 MCP Tools** — Collected from all enabled plugins into a single MCP server
 - **3 Resources** — `cluster://state`, `cluster://nodes`, `cluster://sessions`
 - **Stdio Mode** — Run as MCP server for seamless Claude Code integration
 
@@ -143,7 +145,7 @@ Add to your MCP configuration (`~/.claude/mcp.json`):
 
 The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` to keep stdio clean.
 
-## MCP Tools (24)
+## MCP Tools (43)
 
 ### Memory Plugin (12 tools)
 | Tool | Description |
@@ -161,21 +163,32 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `memory_network_lookup` | Query network device inventory |
 | `memory_list_threads` | List timeline threads with details |
 
-### Cluster Tools Plugin (12 tools)
+### Cluster Tools Plugin (7 tools)
 | Tool | Description |
 |------|-------------|
 | `cluster_status` | Get cluster state, leader, and node resources |
 | `list_nodes` | List all nodes with status and capabilities |
-| `submit_task` | Submit a distributed task to the scheduler |
-| `get_task_result` | Retrieve task execution results |
-| `run_distributed` | Run a command across multiple nodes |
-| `dispatch_subagents` | Launch parallel Claude agents on cluster |
 | `scale_cluster` | Scale cluster membership |
 | `list_sessions` | List active MCP sessions |
 | `relay_to_session` | Relay a message to another session |
 | `publish_context` | Publish context to the cluster |
 | `query_context` | Query shared context |
-| `initiate_rolling_update` | Zero-downtime ISSU upgrade across nodes |
+
+### Task Engine Plugin (12 tools)
+| Tool | Description |
+|------|-------------|
+| `submit_task` | Submit a task with resource constraints and retry policy |
+| `get_task_result` | Get task status and result (persistent in SQLite) |
+| `list_tasks` | List/filter tasks by state, workflow, or node |
+| `cancel_task` | Cancel a queued or running task |
+| `list_dead_letter_tasks` | Inspect tasks that exhausted retries |
+| `retry_dead_letter_task` | Manually re-queue a dead letter task |
+| `drain_node_tasks` | Gracefully migrate tasks off a node |
+| `run_distributed` | Run a command across multiple nodes in parallel |
+| `dispatch_subagents` | Launch Claude subagents on multiple nodes |
+| `submit_workflow` | Submit a DAG workflow with task dependencies |
+| `list_workflows` | List workflows with state filter |
+| `get_workflow_status` | Get workflow status with per-task states |
 
 ### Kubernetes Plugin (4 tools)
 | Tool | Description |
@@ -213,7 +226,9 @@ plugins:
   memory:
     enabled: true          # Raft-replicated shared memory (12 tools)
   cluster-tools:
-    enabled: true          # Cluster operations (12 tools)
+    enabled: true          # Cluster operations (7 tools)
+  task-engine:
+    enabled: true          # Persistent task execution, DAG workflows (12 tools)
   resource-monitor:
     enabled: true          # CPU/GPU/memory/disk monitoring
   updater:
@@ -271,9 +286,10 @@ src/
   plugins/        # Plugin architecture
     types.ts      # Plugin, PluginContext, ToolHandler interfaces
     loader.ts     # PluginLoader — init, start, stop lifecycle
-    registry.ts   # Built-in plugin registry (7 plugins)
+    registry.ts   # Built-in plugin registry (8 plugins)
     memory/       # Memory plugin — wraps csm tools
     cluster-tools/ # Cluster tools plugin — cluster ops + resources
+    task-engine/  # Task engine plugin — persistent tasks, DAG workflows
     kubernetes/   # Kubernetes plugin — K8s adapter + tools
     resource-monitor/ # Resource monitor plugin — CPU/GPU/disk events
     updater/      # Updater plugin — ISSU rolling updates
