@@ -26,6 +26,10 @@ export class ClusterHealthPlugin implements Plugin {
   private noLeaderSince = 0;
   private becameLeaderAt = 0;       // Timestamp when this node became leader
 
+  // Track peer liveness transitions: when a peer drops from alive→unresponsive, grace before alerting
+  private peerLastAlive: Map<string, number> = new Map(); // nodeId → timestamp when last seen alive
+  private peerGracePeriodMs = 90000; // 90s grace — covers restart + rejoin + replication catch-up
+
   // Config defaults
   private intervalMs = 15000;        // Check every 15s
   private termWindowMs = 300000;     // 5-minute window for term velocity
@@ -153,9 +157,20 @@ export class ClusterHealthPlugin implements Plugin {
     const commitIndex = this.ctx.raft.getCommitIndex();
     const votingPeers = peers.filter(p => p.votingMember);
 
-    // A peer is "alive" if matchIndex > 0 (has successfully replicated at least once)
-    // A peer is "unresponsive" if matchIndex is 0 AND commitIndex > 0 (never caught up)
-    const unresponsivePeers = peers.filter(p => p.matchIndex === 0 && commitIndex > 0);
+    // Track peer liveness transitions for grace period
+    for (const peer of peers) {
+      if (peer.matchIndex > 0) {
+        this.peerLastAlive.set(peer.nodeId, now);
+      }
+    }
+
+    // A peer is "unresponsive" if matchIndex is 0 AND commitIndex > 0 AND it wasn't recently alive
+    // This prevents alert spam during rolling restarts (peers temporarily have matchIndex=0 while restarting)
+    const unresponsivePeers = peers.filter(p => {
+      if (p.matchIndex > 0 || commitIndex === 0) return false;
+      const lastAlive = this.peerLastAlive.get(p.nodeId) ?? 0;
+      return (now - lastAlive) > this.peerGracePeriodMs;
+    });
     if (unresponsivePeers.length > 0) {
       const names = unresponsivePeers.map(p => p.nodeId.split('-')[0]).join(', ');
       alerts.push({
