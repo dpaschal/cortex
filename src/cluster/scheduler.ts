@@ -126,6 +126,12 @@ export interface SchedulerConfig {
   schedulingIntervalMs?: number;
 }
 
+/**
+ * @deprecated Use the task-engine plugin instead. This scheduler will be removed in a future version.
+ * The task-engine plugin provides persistent task state, resource-aware scheduling,
+ * DAG workflows, and HA re-queuing.
+ * @see src/plugins/task-engine/index.ts
+ */
 export class TaskScheduler extends EventEmitter {
   private config: SchedulerConfig;
   private taskQueue: Map<string, QueuedTask> = new Map();

@@ -15,7 +15,8 @@ export type { ToolHandler } from '../plugins/types.js';
 export interface ToolsConfig {
   stateManager: ClusterStateManager;
   membership: MembershipManager;
-  scheduler: TaskScheduler;
+  /** @deprecated Optional when task-engine plugin is enabled. */
+  scheduler?: TaskScheduler;
   k8sAdapter: KubernetesAdapter;
   clientPool: GrpcClientPool;
   raft: RaftNode;
@@ -318,6 +319,9 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
           break;
       }
 
+      if (!config.scheduler) {
+        return { error: 'Legacy TaskScheduler disabled — use the task-engine plugin instead' };
+      }
       const result = await config.scheduler.submit(spec);
 
       return {
@@ -343,6 +347,9 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       required: ['taskId'],
     },
     handler: async (args) => {
+      if (!config.scheduler) {
+        return { error: 'Legacy TaskScheduler disabled — use the task-engine plugin instead' };
+      }
       const status = config.scheduler.getStatus(args.taskId as string);
 
       if (!status) {
@@ -382,6 +389,9 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       required: ['command'],
     },
     handler: async (args) => {
+      if (!config.scheduler) {
+        return { error: 'Legacy TaskScheduler disabled — use the task-engine plugin instead' };
+      }
       const command = args.command as string;
       let targetNodes = args.nodes as string[] | undefined;
 
@@ -400,7 +410,7 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
           targetNodes: [node],
         };
 
-        const result = await config.scheduler.submit(spec);
+        const result = await config.scheduler!.submit(spec);
         return { node, taskId, accepted: result.accepted };
       }));
 
@@ -433,6 +443,9 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       required: ['prompt', 'count'],
     },
     handler: async (args) => {
+      if (!config.scheduler) {
+        return { error: 'Legacy TaskScheduler disabled — use the task-engine plugin instead' };
+      }
       const prompt = args.prompt as string;
       const count = args.count as number;
       const contextSummary = args.contextSummary as string | undefined;
@@ -451,7 +464,7 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
             },
           };
 
-          const result = await config.scheduler.submit(spec);
+          const result = await config.scheduler!.submit(spec);
           return { taskId, accepted: result.accepted, assignedNode: result.assignedNode };
         })
       );
@@ -717,6 +730,9 @@ export function createTools(config: ToolsConfig): Map<string, ToolHandler> {
       required: ['targetSession', 'message'],
     },
     handler: async (args) => {
+      if (!config.scheduler) {
+        return { error: 'Legacy TaskScheduler disabled — use the task-engine plugin instead' };
+      }
       const taskId = randomUUID();
       const session = config.stateManager.getSession(config.sessionId);
 

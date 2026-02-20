@@ -29,7 +29,8 @@ export interface ResourceHandler {
 export interface PluginContext {
   raft: RaftNode;
   membership: MembershipManager;
-  scheduler: TaskScheduler;
+  /** @deprecated Optional when task-engine plugin is enabled. */
+  scheduler?: TaskScheduler;
   stateManager: ClusterStateManager;
   clientPool: GrpcClientPool;
   sharedMemoryDb: SharedMemoryDB;

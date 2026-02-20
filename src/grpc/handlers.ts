@@ -16,7 +16,8 @@ export interface ServiceHandlersConfig {
   nodeId: string;
   membership: MembershipManager;
   raft: RaftNode;
-  scheduler: TaskScheduler;
+  /** @deprecated Optional when task-engine plugin is enabled. */
+  scheduler?: TaskScheduler;
   stateManager: ClusterStateManager;
   taskExecutor: TaskExecutor;
   resourceMonitor: ResourceMonitor;
@@ -222,6 +223,13 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
       callback: grpc.sendUnaryData<any>
     ) => {
       try {
+        if (!scheduler) {
+          callback({
+            code: grpc.status.UNAVAILABLE,
+            message: 'Legacy TaskScheduler disabled — use the task-engine plugin instead',
+          });
+          return;
+        }
         const { spec } = call.request;
         logger.info('Received SubmitTask', { taskId: spec?.task_id, type: spec?.type });
 
@@ -271,6 +279,13 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
       callback: grpc.sendUnaryData<any>
     ) => {
       try {
+        if (!scheduler) {
+          callback({
+            code: grpc.status.UNAVAILABLE,
+            message: 'Legacy TaskScheduler disabled — use the task-engine plugin instead',
+          });
+          return;
+        }
         const { task_id } = call.request;
         const status = scheduler.getStatus(task_id);
 
@@ -306,6 +321,13 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
       callback: grpc.sendUnaryData<any>
     ) => {
       try {
+        if (!scheduler) {
+          callback({
+            code: grpc.status.UNAVAILABLE,
+            message: 'Legacy TaskScheduler disabled — use the task-engine plugin instead',
+          });
+          return;
+        }
         const { task_id } = call.request;
         const cancelled = await scheduler.cancel(task_id);
         callback(null, { cancelled });

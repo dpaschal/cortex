@@ -547,17 +547,22 @@ export class Cortex extends EventEmitter {
       raft: this.raft,
     });
 
-    // Task scheduler
-    this.scheduler = new TaskScheduler({
-      nodeId: this.nodeId,
-      logger: this.logger,
-      membership: this.membership,
-      raft: this.raft,
-      clientPool: this.clientPool!,
-      maxQueueSize: this.config.scheduler.maxQueueSize,
-      maxRetries: this.config.scheduler.maxRetries,
-      schedulingIntervalMs: this.config.scheduler.schedulingIntervalMs,
-    });
+    // Task scheduler (legacy — skipped when task-engine plugin is enabled)
+    if (this.config.plugins?.['task-engine']?.enabled) {
+      this.logger.info('Task engine plugin enabled — skipping legacy TaskScheduler');
+      this.scheduler = null;
+    } else {
+      this.scheduler = new TaskScheduler({
+        nodeId: this.nodeId,
+        logger: this.logger,
+        membership: this.membership,
+        raft: this.raft,
+        clientPool: this.clientPool!,
+        maxQueueSize: this.config.scheduler.maxQueueSize,
+        maxRetries: this.config.scheduler.maxRetries,
+        schedulingIntervalMs: this.config.scheduler.schedulingIntervalMs,
+      });
+    }
 
     // Approval workflow
     this.approval = new ApprovalWorkflow({
@@ -639,7 +644,7 @@ export class Cortex extends EventEmitter {
     const ctx: PluginContext = {
       raft: this.raft!,
       membership: this.membership!,
-      scheduler: this.scheduler!,
+      scheduler: this.scheduler ?? undefined,
       stateManager: this.stateManager!,
       clientPool: this.clientPool!,
       sharedMemoryDb: this.sharedMemoryDb!,
@@ -710,7 +715,7 @@ export class Cortex extends EventEmitter {
       nodeId: this.nodeId,
       membership: this.membership!,
       raft: this.raft!,
-      scheduler: this.scheduler!,
+      scheduler: this.scheduler ?? undefined,
       stateManager: this.stateManager!,
       taskExecutor: this.taskExecutor!,
       resourceMonitor: this.resourceMonitor!,
@@ -731,8 +736,8 @@ export class Cortex extends EventEmitter {
     // Start membership
     this.membership!.start();
 
-    // Start scheduler
-    this.scheduler!.start();
+    // Start scheduler (skipped when task-engine plugin is enabled)
+    this.scheduler?.start();
 
     // Start approval workflow
     this.approval!.start();
