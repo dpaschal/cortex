@@ -30,6 +30,9 @@ service ClusterService {
   rpc PublishContext(PublishContextRequest) returns (PublishContextResponse);
   rpc QueryContext(QueryContextRequest) returns (QueryContextResponse);
 
+  // Leadership transfer (CLI -> leader)
+  rpc TransferLeadership(TransferLeadershipRequest) returns (TransferLeadershipResponse);
+
   // Shared memory write forwarding (follower -> leader)
   rpc ForwardMemoryWrite(MemoryWriteRequest) returns (MemoryWriteResponse);
 
@@ -565,6 +568,15 @@ message QueryContextResponse {
 // ============================================================================
 // Shared Memory Messages
 // ============================================================================
+
+message TransferLeadershipRequest {
+  string target_node_id = 1;  // optional: preferred next leader (informational)
+}
+
+message TransferLeadershipResponse {
+  bool success = 1;
+  string message = 2;
+}
 
 message MemoryWriteRequest {
   string sql = 1;

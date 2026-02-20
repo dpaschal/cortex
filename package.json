@@ -5,7 +5,8 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "cortex": "./dist/index.js"
+    "cortex": "./dist/index.js",
+    "cortex-ctl": "./dist/cli.js"
   },
   "scripts": {
     "build": "npm run proto:generate && tsc && node scripts/write-version.js",

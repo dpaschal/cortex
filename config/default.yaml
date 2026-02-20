@@ -207,6 +207,11 @@ plugins:
       telegram:
         enabled: true
         token: ""  # Set via TELEGRAM_BOT_TOKEN env var
+  cluster-health:
+    enabled: true
+    intervalMs: 15000
+    termVelocityThreshold: 5
+    noLeaderAlertMs: 30000
   kubernetes:
     enabled: false
 

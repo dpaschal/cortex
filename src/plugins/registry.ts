@@ -11,4 +11,5 @@ export const BUILTIN_PLUGINS: Record<string, PluginFactory> = {
   'updater':          () => import('./updater/index.js').then(m => new m.UpdaterPlugin()),
   'skills':           () => import('./skills/index.js').then(m => new m.SkillsPlugin()),
   'messaging':        () => import('./messaging/index.js').then(m => new m.MessagingPlugin()),
+  'cluster-health':   () => import('./cluster-health/index.js').then(m => new m.ClusterHealthPlugin()),
 };

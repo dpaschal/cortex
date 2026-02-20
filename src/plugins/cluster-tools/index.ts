@@ -42,6 +42,25 @@ export class ClusterToolsPlugin implements Plugin {
       }
     }
 
+    // Leadership transfer tool
+    this.tools.set('transfer_leadership', {
+      description: 'Make the current leader step down, triggering a new election. The next leader is chosen by Raft consensus.',
+      inputSchema: {
+        type: 'object' as const,
+        properties: {},
+      },
+      handler: async () => {
+        if (!ctx.raft.isLeader()) {
+          return { success: false, error: 'This node is not the leader', currentLeader: ctx.raft.getLeaderId() };
+        }
+        const term = ctx.raft.getCurrentTerm();
+        const stepped = ctx.raft.stepDown();
+        return stepped
+          ? { success: true, message: `Leader stepped down from term ${term}. New election in progress.` }
+          : { success: false, error: 'stepDown failed' };
+      },
+    });
+
     this.resources.set('cluster://state', {
       uri: 'cluster://state',
       name: 'Cluster State',

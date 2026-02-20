@@ -96,6 +96,42 @@ mkdir -p ~/.cortex
 echo "$(uuidgen | cut -c1-8)" > ~/.cortex/node-id
 ```
 
+---
+
+### Build cluster health monitor
+
+**Priority:** High
+
+No cluster-wide health monitoring exists. The `HealthReporter` only checks local resources (CPU/memory/disk). Need a watchdog that monitors:
+- Raft leader presence and stability (no leader = alert)
+- Election term velocity (rapid term increases = instability)
+- Log replication lag across followers
+- Service crash-loop detection (via systemd status)
+- MCP process health (can it reach the leader?)
+- Alerting via Telegram bot or other channels
+
+**Context:** Cluster crash-looped undetected due to `nodeOffline` handler bug + MCP port mismatch. High term churn (25772+) went unnoticed.
+
+---
+
+### Move all services from anvil to forge and decommission anvil
+
+**Priority:** Medium
+
+Migrate everything running on anvil (NixOS, 192.168.1.138) to forge (10GbE infra server). Then decommission anvil.
+
+Services on anvil: cortex node, PostgreSQL (cerebrus DB), Syncthing, KeePass vault sync, SSH.
+
+---
+
+### Backup terminus and re-image with CachyOS
+
+**Priority:** Low
+
+Backup main stuff from terminus (dotfiles, claudecluster repo, cortex config, SSH keys), then re-image it with CachyOS.
+
+---
+
 ## Development Commands
 
 ```bash

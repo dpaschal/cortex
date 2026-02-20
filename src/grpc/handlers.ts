@@ -161,55 +161,89 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
     ) => {
       try {
         const state = stateManager.getState();
+        const s = (v: any) => (v ?? 0).toString();
 
         callback(null, {
-          cluster_id: state.clusterId,
-          leader_id: state.leaderId,
-          term: state.term.toString(),
-          nodes: state.nodes.map(n => ({
-            node_id: n.nodeId,
-            hostname: n.hostname,
-            tailscale_ip: n.tailscaleIp,
-            grpc_port: n.grpcPort,
-            role: `NODE_ROLE_${n.role.toUpperCase()}`,
-            status: `NODE_STATUS_${n.status.toUpperCase()}`,
+          cluster_id: state.clusterId ?? '',
+          leader_id: state.leaderId ?? '',
+          term: s(state.term),
+          nodes: (state.nodes ?? []).map(n => ({
+            node_id: n.nodeId ?? '',
+            hostname: n.hostname ?? '',
+            tailscale_ip: n.tailscaleIp ?? '',
+            grpc_port: n.grpcPort ?? 50051,
+            role: `NODE_ROLE_${(n.role ?? 'unknown').toUpperCase()}`,
+            status: `NODE_STATUS_${(n.status ?? 'unknown').toUpperCase()}`,
             resources: n.resources ? {
-              cpu_cores: n.resources.cpuCores,
-              memory_bytes: n.resources.memoryBytes.toString(),
-              memory_available_bytes: n.resources.memoryAvailableBytes.toString(),
-              gpus: n.resources.gpus.map((g: any) => ({
-                name: g.name,
-                memory_bytes: g.memoryBytes.toString(),
-                memory_available_bytes: g.memoryAvailableBytes.toString(),
-                utilization_percent: g.utilizationPercent,
-                in_use_for_gaming: g.inUseForGaming,
+              cpu_cores: n.resources.cpuCores ?? 0,
+              memory_bytes: s(n.resources.memoryBytes),
+              memory_available_bytes: s(n.resources.memoryAvailableBytes),
+              gpus: (n.resources.gpus ?? []).map((g: any) => ({
+                name: g.name ?? '',
+                memory_bytes: s(g.memoryBytes),
+                memory_available_bytes: s(g.memoryAvailableBytes),
+                utilization_percent: g.utilizationPercent ?? 0,
+                in_use_for_gaming: g.inUseForGaming ?? false,
               })),
-              disk_bytes: n.resources.diskBytes.toString(),
-              disk_available_bytes: n.resources.diskAvailableBytes.toString(),
-              cpu_usage_percent: n.resources.cpuUsagePercent,
-              gaming_detected: n.resources.gamingDetected,
+              disk_bytes: s(n.resources.diskBytes),
+              disk_available_bytes: s(n.resources.diskAvailableBytes),
+              cpu_usage_percent: n.resources.cpuUsagePercent ?? 0,
+              gaming_detected: n.resources.gamingDetected ?? false,
             } : undefined,
-            tags: n.tags,
-            joined_at: n.joinedAt.toString(),
-            last_seen: n.lastSeen.toString(),
+            tags: n.tags ?? [],
+            joined_at: s(n.joinedAt),
+            last_seen: s(n.lastSeen),
           })),
-          total_resources: {
-            cpu_cores: state.totalResources.cpuCores,
-            memory_bytes: state.totalResources.memoryBytes.toString(),
-            gpu_count: state.totalResources.gpuCount,
-            gpu_memory_bytes: state.totalResources.gpuMemoryBytes.toString(),
-          },
-          available_resources: {
-            cpu_cores: state.availableResources.cpuCores,
-            memory_bytes: state.availableResources.memoryBytes.toString(),
-            gpu_count: state.availableResources.gpuCount,
-            gpu_memory_bytes: state.availableResources.gpuMemoryBytes.toString(),
-          },
-          active_tasks: state.activeTasks,
-          queued_tasks: state.queuedTasks,
+          total_resources: state.totalResources ? {
+            cpu_cores: state.totalResources.cpuCores ?? 0,
+            memory_bytes: s(state.totalResources.memoryBytes),
+            gpu_count: state.totalResources.gpuCount ?? 0,
+            gpu_memory_bytes: s(state.totalResources.gpuMemoryBytes),
+          } : { cpu_cores: 0, memory_bytes: '0', gpu_count: 0, gpu_memory_bytes: '0' },
+          available_resources: state.availableResources ? {
+            cpu_cores: state.availableResources.cpuCores ?? 0,
+            memory_bytes: s(state.availableResources.memoryBytes),
+            gpu_count: state.availableResources.gpuCount ?? 0,
+            gpu_memory_bytes: s(state.availableResources.gpuMemoryBytes),
+          } : { cpu_cores: 0, memory_bytes: '0', gpu_count: 0, gpu_memory_bytes: '0' },
+          active_tasks: state.activeTasks ?? 0,
+          queued_tasks: state.queuedTasks ?? 0,
         });
       } catch (error) {
         logger.error('GetClusterState failed', { error });
+        callback({
+          code: grpc.status.INTERNAL,
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    },
+
+    // Transfer leadership (step down)
+    TransferLeadership: async (
+      call: grpc.ServerUnaryCall<any, any>,
+      callback: grpc.sendUnaryData<any>
+    ) => {
+      try {
+        if (!raft.isLeader()) {
+          callback(null, {
+            success: false,
+            message: `This node is not the leader. Current leader: ${raft.getLeaderId() ?? 'unknown'}`,
+          });
+          return;
+        }
+        const term = raft.getCurrentTerm();
+        const stepped = raft.stepDown();
+        if (stepped) {
+          logger.info('Leadership transfer: stepped down', { term });
+          callback(null, {
+            success: true,
+            message: `Stepped down from term ${term}. New election in progress.`,
+          });
+        } else {
+          callback(null, { success: false, message: 'stepDown failed' });
+        }
+      } catch (error) {
+        logger.error('TransferLeadership failed', { error });
         callback({
           code: grpc.status.INTERNAL,
           message: error instanceof Error ? error.message : 'Unknown error',

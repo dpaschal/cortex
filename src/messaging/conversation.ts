@@ -58,6 +58,14 @@ export class ConversationHandler {
     // Convert tools map to ToolDefinition[]
     const toolDefs = this.buildToolDefinitions();
 
+    this.logger.info('Handling message', {
+      chatId,
+      user: message.username,
+      content: message.content.slice(0, 100),
+      toolCount: toolDefs.length,
+      historyLength: history.length,
+    });
+
     // Call LLM with tool loop
     let response: ChatResponse;
     let iterations = 0;
@@ -69,9 +77,19 @@ export class ConversationHandler {
 
     response = await this.provider.chat([...history], chatOptions);
 
+    this.logger.info('LLM response', {
+      chatId,
+      contentLength: response.content?.length ?? 0,
+      toolCalls: response.toolCalls?.map(tc => tc.name) ?? [],
+      model: response.model,
+    });
+
     while (response.toolCalls && response.toolCalls.length > 0 && iterations < this.maxToolIterations) {
       iterations++;
-      this.logger.debug(`Tool iteration ${iterations}: ${response.toolCalls.length} tool call(s)`);
+      this.logger.info(`Tool iteration ${iterations}`, {
+        chatId,
+        tools: response.toolCalls.map(tc => tc.name),
+      });
 
       // Build assistant message with tool_use content blocks
       const assistantBlocks: ContentBlock[] = [];
@@ -91,7 +109,9 @@ export class ConversationHandler {
       // Execute each tool call and build tool_result blocks
       const resultBlocks: ContentBlock[] = [];
       for (const tc of response.toolCalls) {
+        this.logger.info('Executing tool', { chatId, tool: tc.name, input: tc.input });
         const result = await this.executeTool(tc.name, tc.input);
+        this.logger.info('Tool result', { chatId, tool: tc.name, resultLength: result.length });
         resultBlocks.push({
           type: 'tool_result',
           tool_use_id: tc.id,
@@ -102,6 +122,12 @@ export class ConversationHandler {
 
       // Re-call the LLM with updated history
       response = await this.provider.chat([...history], chatOptions);
+      this.logger.info('LLM follow-up response', {
+        chatId,
+        iteration: iterations,
+        contentLength: response.content?.length ?? 0,
+        toolCalls: response.toolCalls?.map(tc => tc.name) ?? [],
+      });
     }
 
     if (iterations >= this.maxToolIterations && response.toolCalls && response.toolCalls.length > 0) {

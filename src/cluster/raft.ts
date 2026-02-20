@@ -588,6 +588,21 @@ export class RaftNode extends EventEmitter {
   }
 
   /**
+   * Voluntarily step down as leader, reverting to follower.
+   * Triggers a new election among remaining nodes.
+   */
+  stepDown(): boolean {
+    if (this.state !== 'leader') {
+      this.config.logger.warn('stepDown called but not leader', { state: this.state });
+      return false;
+    }
+    this.config.logger.info('Leader stepping down voluntarily', { term: this.currentTerm });
+    this.becomeFollower(this.currentTerm);
+    this.resetElectionTimeout();
+    return true;
+  }
+
+  /**
    * Check if elections are currently paused.
    */
   areElectionsPaused(): boolean {

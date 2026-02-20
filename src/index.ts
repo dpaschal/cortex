@@ -362,6 +362,10 @@ export class Cortex extends EventEmitter {
     }
   }
 
+  stepDown(): boolean {
+    return this.raft?.stepDown() ?? false;
+  }
+
   async stop(): Promise<void> {
     this.logger.info('Stopping Cortex');
 
@@ -1174,6 +1178,14 @@ async function main(): Promise<void> {
     console.log('Received SIGTERM, shutting down gracefully...');
     await cluster.stop();
     process.exit(0);
+  });
+
+  process.on('SIGUSR1', () => {
+    if (cluster.stepDown()) {
+      console.log('SIGUSR1: Leader stepped down. New election in progress.');
+    } else {
+      console.log('SIGUSR1: Not the leader, ignoring.');
+    }
   });
 
   // Start the cluster
