@@ -326,7 +326,7 @@ providers:
 ```
 src/
   index.ts        # Core startup: security → tailscale → gRPC → raft → plugins → MCP
-  cli.ts          # CLI subcommands: status, deploy, squelch, switch-leader
+  commands.ts     # CLI subcommands: status, deploy, squelch, switch-leader
   cluster/        # Raft consensus, membership, state, scheduling, ISSU, announcements
   grpc/           # gRPC server, client pool, service handlers
   discovery/      # Tailscale mesh discovery, node approval

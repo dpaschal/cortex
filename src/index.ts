@@ -1111,7 +1111,7 @@ async function main(): Promise<void> {
   const CLI_COMMANDS = ['status', 'switch-leader', 'squelch', 'deploy', 'help'];
   const firstArg = process.argv[2];
   if (firstArg && CLI_COMMANDS.includes(firstArg)) {
-    const { registerCliCommands } = await import('./cli.js');
+    const { registerCliCommands } = await import('./commands.js');
     const cliProgram = new Command();
     cliProgram.name('cortex').version('0.1.0');
     registerCliCommands(cliProgram);
