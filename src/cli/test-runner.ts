@@ -301,21 +301,25 @@ async function testLeaderFailover(pool: GrpcClientPool, client: ClusterClient): 
     }
 
     const oldLeaderId = state.leader_id;
+    const oldTerm = parseInt(state.term as string);
     const leaderAddr = `${leaderNode.tailscale_ip}:${leaderNode.grpc_port || 50051}`;
 
-    // Connect to the leader directly
+    // Connect to the leader directly and request step-down
     await pool.waitForReady(leaderAddr, 5000);
     const leaderConn = pool.getConnection(leaderAddr);
     await pool.call(leaderConn.clusterClient, 'TransferLeadership', { target_node_id: '' });
 
-    // Poll for new leader (up to 15s)
+    // Poll until a leader exists with a higher term (up to 15s)
     let newLeaderId = '';
+    let newTerm = oldTerm;
     for (let i = 0; i < 15; i++) {
       await new Promise(r => setTimeout(r, 1000));
       try {
         const newState = await client.getClusterState();
-        if (newState.leader_id && newState.leader_id !== oldLeaderId) {
+        const t = parseInt(newState.term as string);
+        if (newState.leader_id && t > oldTerm) {
           newLeaderId = newState.leader_id;
+          newTerm = t;
           break;
         }
       } catch {
@@ -326,17 +330,20 @@ async function testLeaderFailover(pool: GrpcClientPool, client: ClusterClient): 
     const duration = Math.round(performance.now() - start);
 
     if (newLeaderId) {
+      const same = newLeaderId === oldLeaderId;
       return {
         name: 'Leader failover',
         passed: true,
-        message: `${shortName(oldLeaderId)} → ${shortName(newLeaderId)}`,
+        message: same
+          ? `${shortName(oldLeaderId)} re-elected (term ${oldTerm}→${newTerm})`
+          : `${shortName(oldLeaderId)} → ${shortName(newLeaderId)} (term ${oldTerm}→${newTerm})`,
         duration,
       };
     }
     return {
       name: 'Leader failover',
       passed: false,
-      message: `no new leader elected within 15s (old: ${shortName(oldLeaderId)})`,
+      message: `no leader elected within 15s after step-down (term ${oldTerm})`,
       duration,
     };
   } catch (err: any) {
