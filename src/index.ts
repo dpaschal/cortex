@@ -1106,19 +1106,6 @@ ${chalk.cyan(`   _____ ___  ____ _____ _______  __
 }
 
 async function main(): Promise<void> {
-  // Detect CLI subcommands before starting the daemon.
-  // Known subcommands run the management CLI and exit.
-  const CLI_COMMANDS = ['status', 'switch-leader', 'squelch', 'deploy', 'test', 'help'];
-  const firstArg = process.argv[2];
-  if (firstArg && CLI_COMMANDS.includes(firstArg)) {
-    const { registerCliCommands } = await import('./commands.js');
-    const cliProgram = new Command();
-    cliProgram.name('cortex').version('0.1.0');
-    registerCliCommands(cliProgram);
-    await cliProgram.parseAsync(process.argv);
-    return;
-  }
-
   const program = new Command();
 
   program
@@ -1131,8 +1118,22 @@ async function main(): Promise<void> {
     .option('--isolated', 'Run without any cluster connection')
     .option('-p, --port <number>', 'gRPC port to listen on')
     .option('-s, --seed <address>', 'Seed node address to join cluster')
-    .option('-v, --verbose', 'Enable verbose logging')
-    .parse(process.argv);
+    .option('-v, --verbose', 'Enable verbose logging');
+
+  // Register CLI subcommands (status, deploy, test, etc.)
+  const { registerCliCommands } = await import('./commands.js');
+  registerCliCommands(program);
+
+  // If a subcommand was given, commander runs it and we're done.
+  // Otherwise fall through to daemon startup.
+  const CLI_COMMANDS = ['status', 'switch-leader', 'squelch', 'deploy', 'test', 'help'];
+  const firstArg = process.argv[2];
+  if (firstArg && CLI_COMMANDS.includes(firstArg)) {
+    await program.parseAsync(process.argv);
+    return;
+  }
+
+  program.parse(process.argv);
 
   const options = program.opts();
 
