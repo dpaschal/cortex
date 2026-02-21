@@ -1215,7 +1215,9 @@ async function main(): Promise<void> {
 export { Cortex as default };
 
 // Run if executed directly
-const isMain = process.argv[1]?.endsWith('index.js') || process.argv[1]?.endsWith('index.ts');
+import { realpathSync } from 'node:fs';
+const resolvedMain = (() => { try { return realpathSync(process.argv[1] ?? ''); } catch { return process.argv[1] ?? ''; } })();
+const isMain = resolvedMain.endsWith('index.js') || resolvedMain.endsWith('index.ts');
 if (isMain) {
   main().catch((error) => {
     console.error('Fatal error:', error);
