@@ -166,6 +166,7 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
         // Build a set of Raft-alive peers (matchIndex > 0 = has replicated)
         const raftAlive = new Set<string>();
         if (raft.isLeader()) {
+          raftAlive.add(config.nodeId); // Leader is obviously alive if handling this request
           const commitIndex = raft.getCommitIndex();
           for (const peer of raft.getPeers()) {
             if (peer.matchIndex > 0 || commitIndex === 0) {
