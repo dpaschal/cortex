@@ -228,6 +228,25 @@ export function registerCliCommands(program: Command): void {
       }
     });
 
+  // ── cortex test ────────────────────────────────────────
+  program
+    .command('test')
+    .description('Run cluster integration tests')
+    .option('-a, --address <addr>', 'gRPC address', 'localhost:50051')
+    .option('--failover', 'Include leader failover test (destructive)')
+    .option('--bot', 'Include Telegram bot test')
+    .action(async (opts) => {
+      const { runClusterTests, printResults } = await import('./cli/test-runner.js');
+      const results = await runClusterTests({
+        address: opts.address,
+        failover: opts.failover,
+        bot: opts.bot,
+      });
+      printResults(results);
+      const failed = results.some(r => !r.passed);
+      process.exit(failed ? 1 : 0);
+    });
+
   // ── cortex deploy ───────────────────────────────────────
   program
     .command('deploy')
