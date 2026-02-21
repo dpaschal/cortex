@@ -227,4 +227,132 @@ export function registerCliCommands(program: Command): void {
         pool.closeAll();
       }
     });
+
+  // ── cortex deploy ───────────────────────────────────────
+  program
+    .command('deploy')
+    .description('Build, sync, and rolling-restart the cluster')
+    .option('-a, --address <addr>', 'gRPC address', 'localhost:50051')
+    .option('--no-build', 'Skip the build step')
+    .option('--squelch <minutes>', 'Alert squelch duration', '10')
+    .option('--pause <seconds>', 'Pause between restarts', '15')
+    .option('--dist <path>', 'Local dist directory', process.cwd() + '/dist')
+    .option('--remote-dist <path>', 'Remote dist directory', '/home/paschal/claudecluster/dist')
+    .option('--user <user>', 'SSH user for remote nodes', 'paschal')
+    .action(async (opts) => {
+      const { execSync } = await import('child_process');
+      const os = await import('os');
+      const localHostname = os.hostname();
+      const pauseMs = parseInt(opts.pause, 10) * 1000;
+      const squelchMins = parseInt(opts.squelch, 10);
+
+      const run = (cmd: string, label: string): boolean => {
+        try {
+          execSync(cmd, { stdio: 'inherit', timeout: 120000 });
+          return true;
+        } catch {
+          console.error(chalk.red(`  ✗ ${label} failed`));
+          return false;
+        }
+      };
+
+      const step = (msg: string) => console.log(chalk.cyan(`\n  ▸ ${msg}`));
+      const ok = (msg: string) => console.log(chalk.green(`  ✓ ${msg}`));
+      const skip = (msg: string) => console.log(chalk.dim(`  ⊘ ${msg}`));
+
+      console.log(chalk.bold('\n  Cortex Deploy\n'));
+
+      // Step 1: Build
+      if (opts.build) {
+        step('Building...');
+        if (!run('npm run build', 'build')) process.exit(1);
+        ok('Build complete');
+      } else {
+        skip('Build skipped (--no-build)');
+      }
+
+      // Step 2: Get cluster state
+      step('Fetching cluster state...');
+      const { pool, client } = await connectOrDie(opts.address);
+      let state: any;
+      try {
+        state = await client.getClusterState();
+      } catch (err: any) {
+        console.error(chalk.red(`  ✗ Cannot get cluster state: ${err.message}`));
+        pool.closeAll();
+        process.exit(1);
+      }
+      pool.closeAll();
+
+      const nodes = state.nodes
+        .filter((n: any) => !n.node_id.endsWith('-mcp'))
+        .map((n: any) => ({
+          id: n.node_id,
+          name: shortName(n.node_id),
+          hostname: n.hostname,
+          ip: n.tailscale_ip,
+          isLeader: n.node_id === state.leader_id,
+          isLocal: n.hostname === localHostname,
+        }));
+
+      const followers = nodes.filter((n: any) => !n.isLeader);
+      const leader = nodes.find((n: any) => n.isLeader);
+
+      ok(`${nodes.length} nodes, leader: ${leader?.name ?? 'NONE'}`);
+
+      // Step 3: Squelch
+      step(`Squelching alerts (${squelchMins}m)...`);
+      run(`cctl squelch ${squelchMins}`, 'squelch');
+
+      // Step 4: Rsync to remote nodes
+      step('Syncing dist/ to remote nodes...');
+      const remoteNodes = nodes.filter((n: any) => !n.isLocal);
+      for (const node of remoteNodes) {
+        const dest = `${opts.user}@${node.ip}:${opts.remoteDist}/`;
+        const rsyncOk = run(
+          `rsync -az --delete "${opts.dist}/" "${dest}"`,
+          `rsync → ${node.name}`,
+        );
+        if (rsyncOk) {
+          ok(`cortex@${node.name} synced`);
+        }
+      }
+
+      // Step 5: Rolling restart — followers first, leader last
+      step('Rolling restart...');
+      const restartOrder = [...followers, ...(leader ? [leader] : [])];
+
+      for (let i = 0; i < restartOrder.length; i++) {
+        const node = restartOrder[i];
+        const label = node.isLeader ? `cortex@${node.name} (leader)` : `cortex@${node.name}`;
+
+        if (node.isLocal) {
+          run('sudo systemctl restart cortex', label);
+        } else {
+          run(
+            `ssh -o ConnectTimeout=5 -o StrictHostKeyChecking=no ${opts.user}@${node.ip} "sudo systemctl restart cortex"`,
+            label,
+          );
+        }
+        ok(`${label} restarted`);
+
+        // Pause between restarts (skip after last node)
+        if (i < restartOrder.length - 1) {
+          process.stdout.write(chalk.dim(`    waiting ${opts.pause}s...`));
+          await new Promise(r => setTimeout(r, pauseMs));
+          process.stdout.write(chalk.dim(' done\n'));
+        }
+      }
+
+      // Step 6: Verify
+      step('Verifying (waiting for cluster to settle)...');
+      await new Promise(r => setTimeout(r, 15000)); // let the cluster settle after leader restart
+      run('cctl status', 'status');
+
+      // Step 7: Unsquelch
+      step('Unsquelching alerts...');
+      run('cctl squelch 0', 'unsquelch');
+
+      console.log(chalk.bold.green('\n  Deploy complete ✓\n'));
+    });
 }
