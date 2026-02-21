@@ -98,22 +98,6 @@ echo "$(uuidgen | cut -c1-8)" > ~/.cortex/node-id
 
 ---
 
-### Build cluster health monitor
-
-**Priority:** High
-
-No cluster-wide health monitoring exists. The `HealthReporter` only checks local resources (CPU/memory/disk). Need a watchdog that monitors:
-- Raft leader presence and stability (no leader = alert)
-- Election term velocity (rapid term increases = instability)
-- Log replication lag across followers
-- Service crash-loop detection (via systemd status)
-- MCP process health (can it reach the leader?)
-- Alerting via Telegram bot or other channels
-
-**Context:** Cluster crash-looped undetected due to `nodeOffline` handler bug + MCP port mismatch. High term churn (25772+) went unnoticed.
-
----
-
 ### Move all services from anvil to forge and decommission anvil
 
 **Priority:** Medium
@@ -141,6 +125,19 @@ npm run dev          # Development mode with watch
 npm run test         # Run tests
 npm start            # Start cluster node
 ```
+
+## CLI Commands
+
+```bash
+cctl status                 # Cluster health, leader, nodes, tasks
+cctl deploy                 # Build → sync → rolling restart → verify
+cctl deploy --no-build      # Sync and restart only (skip build)
+cctl squelch 10             # Suppress health alerts for 10 minutes
+cctl squelch 0              # Re-enable alerts
+cctl switch-leader forge    # Step down leader, prefer forge in next election
+```
+
+When adding new CLI subcommands, also add the command name to `CLI_COMMANDS` array in `src/index.ts`.
 
 ## Tech Stack
 

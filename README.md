@@ -1,15 +1,14 @@
 # Cortex
 
 <p align="center">
-  <b>Distributed AI Mesh for Personal Infrastructure</b>
-</p>
-
-<p align="center">
   <a href="https://buymeacoffee.com/dpaschal">
     <img src="https://img.shields.io/badge/❤️🎆_THANKS!_🎆❤️-Support_This_Project-ff0000?style=for-the-badge" alt="Thanks!" height="40">
   </a>
 </p>
 
+<p align="center">
+  <b>☕ Buy me Claude Code credits or support a project! ☕</b>
+</p>
 <p align="center">
   <i>Every donation keeps the code flowing — these tools are built with your support.</i>
 </p>
@@ -24,7 +23,30 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
+**Distributed AI Mesh for Personal Infrastructure**
+
 Cortex connects your machines into a single intelligent platform — P2P compute mesh with a pluggable architecture, Raft-replicated shared memory, persistent distributed task execution with DAG workflows, and Claude Code integration via MCP.
+
+## Features
+
+- **Raft Consensus** — Fault-tolerant leader election, log replication, and automatic failover across all nodes
+- **gRPC Transport** — Protocol Buffers for fast, typed inter-node communication
+- **Tailscale Discovery** — Automatic mesh discovery via `tag:cortex`, secure WireGuard tunnels, node approval workflow
+- **Shared Memory (CSM)** — Raft-replicated SQLite database for timeline threads, context, and state — reads local, writes through leader
+- **Plugin Architecture** — Core + plugins design; each node enables/disables plugins via per-node YAML config; failed plugins never affect core
+- **47 MCP Tools** — Full Claude Code integration via stdio MCP server; tools collected from all enabled plugins
+- **CLI Management** — `cctl status`, `cctl deploy`, `cctl squelch`, `cctl switch-leader` for cluster operations
+- **Persistent Task Execution** — SQLite-backed tasks with retry policies, dead letter queues, and node draining
+- **DAG Workflows** — Multi-task workflows with dependency graphs, parallel execution, and per-task state tracking
+- **Distributed Commands** — Run shell commands or dispatch Claude subagents across multiple nodes in parallel
+- **ISSU Rolling Updates** — In-Service Software Upgrade with backup/rollback, health verification, and "Tap on Shoulder" notifications
+- **Cluster Health Monitoring** — Term velocity tracking, quorum safety, replication lag detection, Telegram alerts with squelch
+- **LLM Provider Router** — Anthropic (Claude), OpenAI (GPT), and Ollama (local models) with primary + fallback routing
+- **Messaging Gateway** — Leader-only activation, Discord and Telegram adapters, conversation routing, message splitting
+- **Gaming Detection** — Detects Steam/Proton/Wine processes and GPU utilization; marks nodes as gaming to avoid task scheduling
+- **Resource Monitoring** — CPU, memory, disk, GPU tracking with configurable thresholds and health reporting
+- **Kubernetes Hybrid** — K8s/K3s cluster discovery, job submission, and scaling alongside bare-metal nodes
+- **Invisible Mode** — Nodes can join the cluster without being announced (for MCP or monitoring)
 
 ## Overview
 
@@ -54,44 +76,54 @@ Cortex connects your machines into a single intelligent platform — P2P compute
 │  │                      PLUGINS (per-node YAML)                  │   │
 │  ├──────────┬──────────┬──────────┬──────────┬────────────────┤   │
 │  │ Memory   │ Cluster  │ Task     │ Updater  │  Kubernetes    │   │
-│  │ 12 tools │  7 tools │ Engine   │ ISSU     │  4 tools       │   │
+│  │ 12 tools │  8 tools │ Engine   │ ISSU     │  4 tools       │   │
 │  │          │          │ 12 tools │          │                │   │
 │  ├──────────┼──────────┼──────────┼──────────┴────────────────┤   │
-│  │ Skills   │Messaging │ Resource │  MCP Server (43 tools,     │   │
-│  │ SKILL.md │ Discord  │ Monitor  │    3 resources)             │   │
-│  │ Hot-load │ Telegram │          │  Stdio mode for Claude Code │   │
+│  │ Health   │Messaging │ Skills   │  MCP Server (47 tools,     │   │
+│  │ Monitor  │ Discord  │ SKILL.md │    9 resources)             │   │
+│  │ Telegram │ Telegram │ Hot-load │  Stdio mode for Claude Code │   │
 │  └──────────┴──────────┴──────────┴───────────────────────────┘   │
+│                                                                      │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-## Features
+## CLI
 
-### Fixed Core (always-on)
-- **Raft Consensus** — Fault-tolerant leader election across nodes
-- **gRPC Transport** — Protocol Buffers for fast inter-node communication
-- **Tailscale Discovery** — Automatic mesh discovery and node approval
-- **Shared Memory (csm)** — Raft-replicated SQLite database across all nodes
-- **Membership** — Heartbeats, failure detection, resource-aware placement
-- **Security** — mTLS, auth/authz, secrets management
+Cortex includes a management CLI accessible as `cortex` or `cctl`:
 
-### Plugin Architecture
-Cortex uses a **core + plugins** architecture. Each node enables/disables plugins via per-node YAML config. Plugins are isolated — a failed plugin never affects core services.
+```bash
+cctl status                 # Cluster health, leader, nodes, tasks
+cctl deploy                 # Build → sync → rolling restart → verify
+cctl deploy --no-build      # Skip build, just sync and restart
+cctl squelch 10             # Suppress health alerts for 10 minutes
+cctl squelch 0              # Re-enable alerts
+cctl switch-leader forge    # Step down leader, prefer forge in next election
+```
+
+### Deploy Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--no-build` | (builds) | Skip `npm run build` |
+| `--squelch <min>` | `10` | Alert squelch duration |
+| `--pause <sec>` | `15` | Pause between node restarts |
+| `--user <user>` | `paschal` | SSH user for remote nodes |
+| `--dist <path>` | `./dist` | Local dist directory |
+| `--remote-dist <path>` | `/home/paschal/claudecluster/dist` | Remote dist directory |
+
+## Plugins
 
 | Plugin | Tools | Description |
 |--------|-------|-------------|
 | **memory** | 12 | Timeline threads, thoughts, context — Raft-replicated across nodes |
-| **cluster-tools** | 7 | Cluster status, membership, sessions, context sharing |
+| **cluster-tools** | 8 | Cluster status, membership, sessions, leadership transfer, context sharing |
 | **task-engine** | 12 | Persistent task execution, DAG workflows, dead letter queue, node draining |
-| **resource-monitor** | — | CPU/GPU/memory/disk monitoring, health reporting (no MCP tools) |
-| **updater** | 1 | ISSU rolling updates with backup and rollback |
+| **cluster-health** | 2 | Raft health monitoring, term velocity, Telegram alerts, alert squelch |
+| **resource-monitor** | — | CPU/GPU/memory/disk monitoring, gaming detection, health reporting |
+| **updater** | 1 | ISSU rolling updates with backup, rollback, and "Tap on Shoulder" notifications |
 | **kubernetes** | 4 | K8s/K3s cluster discovery, job submission, scaling |
 | **skills** | 2 | SKILL.md loader with YAML-frontmatter and hot-reload |
-| **messaging** | 5 | Discord (@DALEK), Telegram bots, inbox with read/unread tracking |
-
-### Claude Code Integration (MCP)
-- **43 MCP Tools** — Collected from all enabled plugins into a single MCP server
-- **3 Resources** — `cluster://state`, `cluster://nodes`, `cluster://sessions`
-- **Stdio Mode** — Run as MCP server for seamless Claude Code integration
+| **messaging** | 6 | Discord, Telegram bots, inbox with read/unread tracking, alert notifications |
 
 ## Quick Start
 
@@ -109,6 +141,7 @@ git clone https://github.com/dpaschal/cortex.git
 cd cortex
 npm install
 npm run build
+npm link    # Makes 'cortex' and 'cctl' available globally
 ```
 
 ### Running a Node
@@ -145,7 +178,7 @@ Add to your MCP configuration (`~/.claude/mcp.json`):
 
 The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` to keep stdio clean.
 
-## MCP Tools (43)
+## MCP Tools (47)
 
 ### Memory Plugin (12 tools)
 | Tool | Description |
@@ -163,7 +196,7 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `memory_network_lookup` | Query network device inventory |
 | `memory_list_threads` | List timeline threads with details |
 
-### Cluster Tools Plugin (7 tools)
+### Cluster Tools Plugin (8 tools)
 | Tool | Description |
 |------|-------------|
 | `cluster_status` | Get cluster state, leader, and node resources |
@@ -173,6 +206,7 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `relay_to_session` | Relay a message to another session |
 | `publish_context` | Publish context to the cluster |
 | `query_context` | Query shared context |
+| `transfer_leadership` | Step down current leader, trigger new election |
 
 ### Task Engine Plugin (12 tools)
 | Tool | Description |
@@ -190,6 +224,17 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `list_workflows` | List workflows with state filter |
 | `get_workflow_status` | Get workflow status with per-task states |
 
+### Cluster Health Plugin (2 tools)
+| Tool | Description |
+|------|-------------|
+| `cluster_health` | Cluster health report: leader stability, term velocity, replication lag, alerts |
+| `squelch_alerts` | Suppress/unsquelch health alert notifications for maintenance windows |
+
+### Updater Plugin (1 tool)
+| Tool | Description |
+|------|-------------|
+| `initiate_rolling_update` | ISSU rolling update: backup → sync → restart → verify per node |
+
 ### Kubernetes Plugin (4 tools)
 | Tool | Description |
 |------|-------------|
@@ -204,7 +249,7 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `list_skills` | List all loaded SKILL.md skills |
 | `get_skill` | Get a skill's full content by name |
 
-### Messaging Plugin (5 tools)
+### Messaging Plugin (6 tools)
 | Tool | Description |
 |------|-------------|
 | `messaging_send` | Send a message to the inbox |
@@ -212,6 +257,7 @@ The `--mcp` flag runs Cortex as an MCP server. Logs go to `/tmp/cortex-mcp.log` 
 | `messaging_list` | List all conversations |
 | `messaging_get` | Retrieve a specific message |
 | `messaging_gateway_status` | Check bot connection status |
+| `messaging_notify` | Send alert notification (used by cluster-health and updater plugins) |
 
 ## Configuration
 
@@ -226,13 +272,15 @@ plugins:
   memory:
     enabled: true          # Raft-replicated shared memory (12 tools)
   cluster-tools:
-    enabled: true          # Cluster operations (7 tools)
+    enabled: true          # Cluster operations (8 tools)
   task-engine:
     enabled: true          # Persistent task execution, DAG workflows (12 tools)
+  cluster-health:
+    enabled: true          # Raft health monitoring, Telegram alerts (2 tools)
   resource-monitor:
-    enabled: true          # CPU/GPU/memory/disk monitoring
+    enabled: true          # CPU/GPU/memory/disk monitoring, gaming detection
   updater:
-    enabled: true          # ISSU rolling updates
+    enabled: true          # ISSU rolling updates (1 tool)
   kubernetes:
     enabled: false         # K8s adapter (enable on nodes with kubeconfig)
   skills:
@@ -265,6 +313,12 @@ providers:
   anthropic:
     model: claude-sonnet-4-6
     apiKey: ${ANTHROPIC_API_KEY}
+  openai:
+    model: gpt-4o
+    apiKey: ${OPENAI_API_KEY}
+  ollama:
+    model: llama3.2
+    baseUrl: http://localhost:11434
 ```
 
 ## Architecture
@@ -272,13 +326,14 @@ providers:
 ```
 src/
   index.ts        # Core startup: security → tailscale → gRPC → raft → plugins → MCP
-  cluster/        # Raft consensus, membership, state, scheduling, ISSU
+  cli.ts          # CLI subcommands: status, deploy, squelch, switch-leader
+  cluster/        # Raft consensus, membership, state, scheduling, ISSU, announcements
   grpc/           # gRPC server, client pool, service handlers
   discovery/      # Tailscale mesh discovery, node approval
   memory/         # SharedMemoryDB (csm), Raft replication, memory MCP tools
-  agent/          # Resource monitor, task executor, health reporter
-  messaging/      # Gateway, Discord/Telegram adapters, inbox
-  providers/      # LLM routing — Anthropic, OpenAI, Ollama
+  agent/          # Resource monitor, task executor, health reporter, gaming detection
+  messaging/      # Gateway (leader-only), Discord/Telegram adapters, inbox
+  providers/      # LLM routing — Anthropic, OpenAI, Ollama with fallback
   skills/         # SKILL.md loader with frontmatter parsing
   mcp/            # MCP server, tool/resource factories
   kubernetes/     # K8s/K3s job submission
@@ -286,15 +341,16 @@ src/
   plugins/        # Plugin architecture
     types.ts      # Plugin, PluginContext, ToolHandler interfaces
     loader.ts     # PluginLoader — init, start, stop lifecycle
-    registry.ts   # Built-in plugin registry (8 plugins)
+    registry.ts   # Built-in plugin registry (9 plugins)
     memory/       # Memory plugin — wraps csm tools
-    cluster-tools/ # Cluster tools plugin — cluster ops + resources
+    cluster-tools/ # Cluster tools plugin — cluster ops + leadership
+    cluster-health/ # Cluster health plugin — monitoring + Telegram alerts
     task-engine/  # Task engine plugin — persistent tasks, DAG workflows
     kubernetes/   # Kubernetes plugin — K8s adapter + tools
-    resource-monitor/ # Resource monitor plugin — CPU/GPU/disk events
-    updater/      # Updater plugin — ISSU rolling updates
+    resource-monitor/ # Resource monitor plugin — CPU/GPU/disk + gaming detection
+    updater/      # Updater plugin — ISSU rolling updates with tap-on-shoulder
     skills/       # Skills plugin — SKILL.md hot-reload
-    messaging/    # Messaging plugin — Discord/Telegram bots
+    messaging/    # Messaging plugin — Discord/Telegram bots + alert notifications
 ```
 
 ### Plugin Lifecycle
