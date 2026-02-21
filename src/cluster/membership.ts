@@ -94,6 +94,31 @@ export class MembershipManager extends EventEmitter {
       this.handleCommittedEntry(entry);
     });
 
+    // When THIS node wins an election, sync Raft peers into membership
+    // so heartbeats from existing followers are recognized immediately
+    config.raft.on('leaderElected', () => {
+      const peers = config.raft.getPeers();
+      for (const peer of peers) {
+        if (!this.nodes.has(peer.nodeId)) {
+          const [ip, portStr] = peer.address.split(':');
+          const hostname = peer.nodeId.replace(/-[a-f0-9]+$/, '');
+          this.nodes.set(peer.nodeId, {
+            nodeId: peer.nodeId,
+            hostname,
+            tailscaleIp: ip,
+            grpcPort: parseInt(portStr) || 50051,
+            role: 'follower',
+            status: 'active',
+            resources: null,
+            tags: [],
+            joinedAt: Date.now(),
+            lastSeen: Date.now(),
+          });
+          config.logger.info('Synced Raft peer into membership on election', { nodeId: peer.nodeId });
+        }
+      }
+    });
+
     // Update leaderAddress and node roles when Raft discovers a new leader
     config.raft.on('leaderChanged', (newLeaderId: string) => {
       // Demote any node currently marked as leader (except self — handled by stateChange)
