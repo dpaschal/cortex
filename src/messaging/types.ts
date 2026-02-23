@@ -33,6 +33,14 @@ export interface ChannelMessage {
   content: string;
   timestamp: string;
   replyTo?: string;
+  /** Media attachments (photos, docs, voice, etc.) */
+  media?: Array<{
+    type: 'photo' | 'document' | 'voice' | 'audio' | 'video' | 'video_note';
+    fileId: string;
+    fileName?: string;
+    mimeType?: string;
+    fileSize?: number;
+  }>;
 }
 
 export interface ChannelAdapter {
