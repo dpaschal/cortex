@@ -18,7 +18,9 @@ vi.mock('../../../messaging/channels/telegram.js', () => {
       disconnect: vi.fn().mockResolvedValue(undefined),
       isConnected: vi.fn().mockReturnValue(false),
       onMessage: vi.fn(),
+      onCommand: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue(undefined),
+      sendTyping: vi.fn().mockResolvedValue(undefined),
     })),
   };
 });
@@ -39,7 +41,48 @@ vi.mock('../../../messaging/conversation.js', () => {
   return {
     ConversationHandler: vi.fn().mockImplementation(() => ({
       handleMessage: vi.fn().mockResolvedValue('test reply'),
+      clearHistory: vi.fn(),
     })),
+  };
+});
+
+// Mock ConversationStore
+vi.mock('../../../messaging/persistence.js', () => {
+  return {
+    ConversationStore: vi.fn().mockImplementation(() => ({
+      load: vi.fn().mockReturnValue([]),
+      save: vi.fn(),
+      clear: vi.fn(),
+    })),
+  };
+});
+
+// Mock format utilities — passthrough to real implementations
+vi.mock('../../../messaging/format.js', () => {
+  return {
+    markdownToTelegramHtml: vi.fn().mockImplementation((text: string) => text),
+    smartChunk: vi.fn().mockImplementation((text: string, maxLength: number) => {
+      // Replicate real smartChunk behavior for testing
+      if (text.length > maxLength * 0.75 && text.includes('\n\n')) {
+        const paragraphs = text.split('\n\n');
+        if (paragraphs.length > 1 && paragraphs.every((p: string) => p.length <= maxLength)) {
+          return paragraphs;
+        }
+      }
+      if (text.length <= maxLength) return [text];
+      const chunks: string[] = [];
+      let remaining = text;
+      while (remaining.length > 0) {
+        if (remaining.length <= maxLength) { chunks.push(remaining); break; }
+        const half = maxLength / 2;
+        let splitAt = remaining.lastIndexOf('\n\n', maxLength);
+        if (splitAt < half) splitAt = remaining.lastIndexOf('\n', maxLength);
+        if (splitAt < half) splitAt = maxLength;
+        chunks.push(remaining.slice(0, splitAt));
+        remaining = remaining.slice(splitAt).replace(/^\n+/, '');
+      }
+      return chunks;
+    }),
   };
 });
 
@@ -102,13 +145,22 @@ function createMockLogger() {
   } as unknown as import('winston').Logger;
 }
 
+function createMockSharedMemoryDb() {
+  return {
+    getDatabase: vi.fn().mockReturnValue({
+      exec: vi.fn(),
+      prepare: vi.fn().mockReturnValue({ get: vi.fn(), run: vi.fn() }),
+    }),
+  } as any;
+}
+
 function createPluginContext(overrides?: Partial<PluginContext>): PluginContext {
   return {
     raft: createMockRaft() as any,
     membership: {} as any,
     stateManager: {} as any,
     clientPool: {} as any,
-    sharedMemoryDb: {} as any,
+    sharedMemoryDb: createMockSharedMemoryDb(),
     memoryReplicator: {} as any,
     logger: createMockLogger(),
     nodeId: 'test-node',
@@ -247,7 +299,9 @@ describe('MessagingPlugin', () => {
       await plugin.init(ctx);
       await plugin.start();
 
-      expect(TelegramAdapter).toHaveBeenCalledWith({ token: 'test-token' });
+      expect(TelegramAdapter).toHaveBeenCalledWith(
+        expect.objectContaining({ token: 'test-token' }),
+      );
       expect(ConversationHandler).toHaveBeenCalledWith(
         expect.objectContaining({
           agentName: 'TestBot',
@@ -367,10 +421,12 @@ describe('MessagingPlugin', () => {
       await plugin.init(ctx);
       await plugin.start();
 
-      expect(logger.info).toHaveBeenCalledWith('Messaging gateway configured', {
-        adapter: 'telegram',
-        agent: 'Cipher',
-      });
+      expect(logger.info).toHaveBeenCalledWith('Messaging gateway configured',
+        expect.objectContaining({
+          adapter: 'telegram',
+          agent: 'Cipher',
+        }),
+      );
     });
   });
 
@@ -390,7 +446,9 @@ describe('MessagingPlugin', () => {
       await plugin.init(ctx);
       await plugin.start();
 
-      expect(TelegramAdapter).toHaveBeenCalledWith({ token: 'env-token-123' });
+      expect(TelegramAdapter).toHaveBeenCalledWith(
+        expect.objectContaining({ token: 'env-token-123' }),
+      );
     });
 
     it('should prefer config token over env var', async () => {
@@ -405,7 +463,9 @@ describe('MessagingPlugin', () => {
       await plugin.init(ctx);
       await plugin.start();
 
-      expect(TelegramAdapter).toHaveBeenCalledWith({ token: 'config-token' });
+      expect(TelegramAdapter).toHaveBeenCalledWith(
+        expect.objectContaining({ token: 'config-token' }),
+      );
     });
 
     it('should do nothing when neither config token nor env var exists', async () => {
