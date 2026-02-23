@@ -671,4 +671,99 @@ describe('ConversationHandler', () => {
       expect(resultBlocks[0].content).toContain('... [truncated]');
     });
   });
+
+  // -------------------------------------------------------------------------
+  // 9. CSM persistence
+  // -------------------------------------------------------------------------
+  describe('CSM persistence', () => {
+    it('should load history from store on first message', async () => {
+      const chatFn = vi.fn().mockResolvedValue(textResponse('hi'));
+      const provider = createMockProvider(chatFn);
+      const store = {
+        load: vi.fn().mockReturnValue([
+          { role: 'user' as const, content: 'previous' },
+          { role: 'assistant' as const, content: 'prev reply' },
+        ]),
+        save: vi.fn(),
+        clear: vi.fn(),
+      };
+
+      const handler = new ConversationHandler({
+        provider,
+        tools: new Map(),
+        logger,
+        store,
+      });
+
+      await handler.handleMessage(makeMessage({ content: 'new msg' }));
+
+      expect(store.load).toHaveBeenCalledWith('chat-1');
+      const [messages] = chatFn.mock.calls[0];
+      expect(messages).toHaveLength(3); // 2 from store + 1 new
+      expect(messages[0].content).toBe('previous');
+    });
+
+    it('should save history to store after response', async () => {
+      const chatFn = vi.fn().mockResolvedValue(textResponse('reply'));
+      const provider = createMockProvider(chatFn);
+      const store = {
+        load: vi.fn().mockReturnValue([]),
+        save: vi.fn(),
+        clear: vi.fn(),
+      };
+
+      const handler = new ConversationHandler({
+        provider,
+        tools: new Map(),
+        logger,
+        store,
+      });
+
+      await handler.handleMessage(makeMessage({ content: 'hello' }));
+
+      expect(store.save).toHaveBeenCalledWith('chat-1', expect.any(Array));
+      const savedHistory = store.save.mock.calls[0][1];
+      expect(savedHistory).toHaveLength(2); // user + assistant
+    });
+
+    it('should clear store on clearHistory', async () => {
+      const store = {
+        load: vi.fn().mockReturnValue([]),
+        save: vi.fn(),
+        clear: vi.fn(),
+      };
+
+      const handler = new ConversationHandler({
+        provider: createMockProvider(async () => textResponse('ok')),
+        tools: new Map(),
+        logger,
+        store,
+      });
+
+      handler.clearHistory('chat-1');
+      expect(store.clear).toHaveBeenCalledWith('chat-1');
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // 10. Typing callback
+  // -------------------------------------------------------------------------
+  describe('typing callback', () => {
+    it('should call onTyping before LLM call', async () => {
+      const chatFn = vi.fn().mockResolvedValue(textResponse('ok'));
+      const provider = createMockProvider(chatFn);
+      const onTyping = vi.fn();
+
+      const handler = new ConversationHandler({
+        provider,
+        tools: new Map(),
+        logger,
+        onTyping,
+      });
+
+      await handler.handleMessage(makeMessage());
+
+      expect(onTyping).toHaveBeenCalledWith('chat-1');
+    });
+  });
 });

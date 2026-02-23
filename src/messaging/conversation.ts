@@ -22,6 +22,12 @@ export interface ConversationHandlerConfig {
   systemPrompt?: string;
   maxHistory?: number;
   maxToolIterations?: number;
+  store?: {
+    load(chatId: string): ChatMessage[];
+    save(chatId: string, history: ChatMessage[]): void;
+    clear(chatId: string): void;
+  };
+  onTyping?: (chatId: string) => void | Promise<void>;
 }
 
 export class ConversationHandler {
@@ -32,6 +38,8 @@ export class ConversationHandler {
   private systemPrompt: string;
   private maxHistory: number;
   private maxToolIterations: number;
+  private store?: ConversationHandlerConfig['store'];
+  private onTyping?: ConversationHandlerConfig['onTyping'];
 
   constructor(config: ConversationHandlerConfig) {
     this.provider = config.provider;
@@ -40,6 +48,8 @@ export class ConversationHandler {
     this.maxHistory = config.maxHistory ?? DEFAULT_MAX_HISTORY;
     this.maxToolIterations = config.maxToolIterations ?? DEFAULT_MAX_TOOL_ITERATIONS;
     this.histories = new Map();
+    this.store = config.store;
+    this.onTyping = config.onTyping;
 
     const name = config.agentName ?? 'Cortex';
     this.systemPrompt = config.systemPrompt ??
@@ -50,7 +60,9 @@ export class ConversationHandler {
     const chatId = message.channelId;
 
     // Work on a local copy to avoid concurrent mutation of the stored array
-    const history: ChatMessage[] = [...this.getHistory(chatId)];
+    const history: ChatMessage[] = this.store
+      ? [...this.store.load(chatId)]
+      : [...this.getHistory(chatId)];
 
     // Append user message
     history.push({ role: 'user', content: message.content });
@@ -74,6 +86,8 @@ export class ConversationHandler {
       systemPrompt: this.systemPrompt,
       tools: toolDefs.length > 0 ? toolDefs : undefined,
     };
+
+    await this.onTyping?.(chatId);
 
     response = await this.provider.chat([...history], chatOptions);
 
@@ -137,17 +151,22 @@ export class ConversationHandler {
     // Append final assistant response to history
     history.push({ role: 'assistant', content: response.content });
 
-    // Commit the local history back atomically
-    this.histories.set(chatId, history);
-
     // Trim history if over limit
-    this.trimHistory(chatId);
+    this.trimHistoryArray(history);
+
+    // Persist
+    if (this.store) {
+      this.store.save(chatId, history);
+    } else {
+      this.histories.set(chatId, history);
+    }
 
     return response.content;
   }
 
   clearHistory(chatId: string): void {
     this.histories.delete(chatId);
+    this.store?.clear(chatId);
   }
 
   private getHistory(chatId: string): ChatMessage[] {
@@ -196,17 +215,12 @@ export class ConversationHandler {
     return result;
   }
 
-  private trimHistory(chatId: string): void {
-    const history = this.histories.get(chatId);
-    if (!history || history.length <= this.maxHistory) return;
+  private trimHistoryArray(history: ChatMessage[]): void {
+    if (history.length <= this.maxHistory) return;
 
-    // Remove oldest messages to fit within maxHistory.
-    // Keep the most recent messages.
     const excess = history.length - this.maxHistory;
     history.splice(0, excess);
 
-    // Ensure history starts with a plain user message, not a mid-tool-loop fragment.
-    // An orphaned tool_result (without preceding tool_use) causes API 400 errors.
     while (history.length > 0) {
       const first = history[0];
       const isToolResult =
