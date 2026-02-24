@@ -31,7 +31,7 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
   // Load local build hash for version-aware rejoin
   let localBuildHash = '';
   try {
-    const versionPath = path.join(__dirname, 'version.json');
+    const versionPath = path.join(__dirname, '..', 'version.json');
     const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf-8'));
     localBuildHash = versionData.buildHash ?? '';
   } catch {
