@@ -8,8 +8,11 @@ Type=simple
 User=paschal
 WorkingDirectory=/home/paschal/claudecluster
 ExecStart=/usr/bin/node /home/paschal/claudecluster/dist/index.js
-Restart=on-failure
-RestartSec=10
+Restart=always
+RestartSec=3
+TimeoutStopSec=15
+KillMode=mixed
+ExecStopPost=-/usr/bin/fuser -k 50051/tcp
 StandardOutput=journal
 StandardError=journal
 

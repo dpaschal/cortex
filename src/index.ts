@@ -374,6 +374,15 @@ export class Cortex extends EventEmitter {
   async stop(): Promise<void> {
     this.logger.info('Stopping Cortex');
 
+    // Kill any running task executor child processes first
+    if (this.taskExecutor) {
+      const runningIds = this.taskExecutor.getRunningTaskIds();
+      if (runningIds.length > 0) {
+        this.logger.info('Cancelling running tasks', { count: runningIds.length });
+        await Promise.all(runningIds.map(id => this.taskExecutor!.cancel(id)));
+      }
+    }
+
     // Stop MCP server
     if (this.mcpServer) {
       await this.mcpServer.stop();
@@ -851,8 +860,13 @@ export class Cortex extends EventEmitter {
         stdio: 'pipe',
       });
 
-      this.logger.info('Auto-update complete, restarting cortex...');
-      execSync('sudo systemctl restart cortex', { timeout: 10000, stdio: 'pipe' });
+      this.logger.info('Auto-update complete, exiting for systemd restart...');
+
+      // Exit the process — systemd's Restart=always will restart us with the new code.
+      // Do NOT use `systemctl restart` here: that creates a deadlock where the process
+      // blocks in execSync waiting for systemd to restart itself, and the old socket
+      // isn't released before the new instance tries to bind (the gauntlet orphan bug).
+      process.exit(0);
     } catch (error) {
       this.logger.error('Auto-update failed', { error });
       // Don't crash — continue running with old code, manual intervention needed
