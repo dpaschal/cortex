@@ -13,7 +13,7 @@
 ## Prerequisites
 
 ```bash
-cd /home/paschal/claudecluster
+cd /home/paschal/cortex
 npm install better-sqlite3
 npm install -D @types/better-sqlite3
 ```
@@ -3089,7 +3089,7 @@ sharedMemory:
 
 ### Step 12.2: Update CLAUDE.md bootstrap queries
 
-**File:** `/home/paschal/claudecluster/CLAUDE.md`
+**File:** `/home/paschal/cortex/CLAUDE.md`
 
 Replace the PostgreSQL bootstrap queries in the global CLAUDE.md with memory_* MCP tool calls. The bootstrap should now use:
 
@@ -3106,17 +3106,17 @@ Instead of SSH+psql, use these MCP tools at session start:
 npm run build
 
 # Deploy to forge (leader/seed node)
-ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/claudecluster && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
+ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/cortex && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
 ```
 
 ### Step 12.4: Run migration on forge, then verify replication
 
 ```bash
 # Run migration on forge (leader)
-ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/claudecluster && npx tsx scripts/migrate-to-shared-memory.ts --cerebrus-only"
+ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/cortex && npx tsx scripts/migrate-to-shared-memory.ts --cerebrus-only"
 
 # Check that data appears
-ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/claudecluster && npx tsx -e \"
+ssh -o StrictHostKeyChecking=no paschal@192.168.1.200 "cd /home/paschal/cortex && npx tsx -e \"
 import Database from 'better-sqlite3';
 const db = new Database('/home/paschal/.cortex/shared-memory.db', { readonly: true });
 console.log('Threads:', db.prepare('SELECT COUNT(*) as c FROM timeline_threads').get());
@@ -3131,13 +3131,13 @@ db.close();
 
 ```bash
 # Deploy to hammer
-ssh -o StrictHostKeyChecking=no paschal@100.73.18.82 "cd /home/paschal/claudecluster && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
+ssh -o StrictHostKeyChecking=no paschal@100.73.18.82 "cd /home/paschal/cortex && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
 
 # Deploy to htnas02
-ssh -o StrictHostKeyChecking=no paschal@100.103.240.34 "cd /home/paschal/claudecluster && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
+ssh -o StrictHostKeyChecking=no paschal@100.103.240.34 "cd /home/paschal/cortex && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
 
 # Deploy to anvil (NixOS — may need nix-specific steps)
-ssh -o StrictHostKeyChecking=no paschal@192.168.1.138 "cd /home/paschal/claudecluster && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
+ssh -o StrictHostKeyChecking=no paschal@192.168.1.138 "cd /home/paschal/cortex && git pull && npm install && npm run build && sudo systemctl restart claudecluster"
 ```
 
 ### Step 12.6: Verify replication across nodes

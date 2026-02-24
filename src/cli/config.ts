@@ -21,7 +21,7 @@ function shortName(nodeId: string): string {
   return parts.slice(0, -1).join('-');
 }
 
-const CONFIG_PATH = '/home/paschal/claudecluster/config/default.yaml';
+const CONFIG_PATH = path.join(process.cwd(), 'config/default.yaml');
 
 export interface ConfigOpts {
   address: string;

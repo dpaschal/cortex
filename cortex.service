@@ -6,8 +6,8 @@ Wants=tailscaled.service
 [Service]
 Type=simple
 User=paschal
-WorkingDirectory=/home/paschal/claudecluster
-ExecStart=/usr/bin/node /home/paschal/claudecluster/dist/index.js
+WorkingDirectory=/home/paschal/cortex
+ExecStart=/usr/bin/node /home/paschal/cortex/dist/index.js
 Restart=always
 RestartSec=3
 TimeoutStopSec=15

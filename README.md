@@ -109,7 +109,7 @@ cctl switch-leader forge    # Step down leader, prefer forge in next election
 | `--pause <sec>` | `15` | Pause between node restarts |
 | `--user <user>` | `paschal` | SSH user for remote nodes |
 | `--dist <path>` | `./dist` | Local dist directory |
-| `--remote-dist <path>` | `/home/paschal/claudecluster/dist` | Remote dist directory |
+| `--remote-dist <path>` | `/home/paschal/cortex/dist` | Remote dist directory |
 
 ## Plugins
 

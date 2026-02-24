@@ -209,7 +209,7 @@ describe('TailscaleDiscovery', () => {
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 5 tests PASS
 
 **Step 3: Commit**
@@ -326,7 +326,7 @@ Add after Status Fetching describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 8 tests PASS
 
 **Step 3: Commit**
@@ -497,7 +497,7 @@ Add after Node Filtering describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 13 tests PASS
 
 **Step 3: Commit**
@@ -582,7 +582,7 @@ Add after Event Emission describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 16 tests PASS
 
 **Step 3: Commit**
@@ -656,7 +656,7 @@ Add after Polling Lifecycle describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 20 tests PASS
 
 **Step 3: Commit**
@@ -672,12 +672,12 @@ git commit -m "test(tailscale): add static helpers and hostname resolution tests
 
 **Step 1: Run all tailscale tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/tailscale-discovery.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/tailscale-discovery.test.ts`
 Expected: All 20 tests PASS
 
 **Step 2: Run full test suite to ensure no regressions**
 
-Run: `cd /home/paschal/claudecluster && npm test`
+Run: `cd /home/paschal/cortex && npm test`
 Expected: All tests PASS
 
 **Step 3: Final commit**

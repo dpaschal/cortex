@@ -137,7 +137,7 @@ describe('ApprovalWorkflow', () => {
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 6 tests PASS
 
 **Step 3: Commit**
@@ -241,7 +241,7 @@ Add after Auto-Approval describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 11 tests PASS
 
 **Step 3: Commit**
@@ -338,7 +338,7 @@ Add after Request Approval describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 15 tests PASS
 
 **Step 3: Commit**
@@ -395,7 +395,7 @@ Add after Manual Decision describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 18 tests PASS
 
 **Step 3: Commit**
@@ -468,7 +468,7 @@ Add after Callback Handling describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 21 tests PASS
 
 **Step 3: Commit**
@@ -615,7 +615,7 @@ Add after Request Timeout describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts`
 Expected: All 27 tests PASS
 
 **Step 3: Commit**
@@ -808,7 +808,7 @@ describe('Approval Integration', () => {
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-integration.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-integration.test.ts`
 Expected: All 5 tests PASS
 
 **Step 3: Commit**
@@ -824,12 +824,12 @@ git commit -m "test(approval): add integration tests with MembershipManager"
 
 **Step 1: Run all approval tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/approval-workflow.test.ts tests/approval-integration.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/approval-workflow.test.ts tests/approval-integration.test.ts`
 Expected: All 32 tests PASS
 
 **Step 2: Run full test suite to ensure no regressions**
 
-Run: `cd /home/paschal/claudecluster && npm test`
+Run: `cd /home/paschal/cortex && npm test`
 Expected: All tests PASS
 
 **Step 3: Final commit**

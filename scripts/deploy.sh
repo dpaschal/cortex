@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-REPO_DIR="/home/paschal/claudecluster"
+REPO_DIR="/home/paschal/cortex"
 SERVICE_NAME="cortex"
 HEALTH_CHECK_TIMEOUT=30
 HEALTH_CHECK_INTERVAL=2

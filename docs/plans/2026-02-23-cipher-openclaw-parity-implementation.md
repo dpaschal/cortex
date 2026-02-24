@@ -12,7 +12,7 @@
 
 ## Prerequisites
 
-- Working directory: `/home/paschal/claudecluster`
+- Working directory: `/home/paschal/cortex`
 - Test command: `npx vitest run` (all tests) or `npx vitest run <path>` (specific file)
 - Build command: `npm run build`
 - grammY docs: https://grammy.dev/
@@ -28,7 +28,7 @@
 
 Run:
 ```bash
-cd /home/paschal/claudecluster && npm install grammy @grammyjs/runner @grammyjs/transformer-throttler
+cd /home/paschal/cortex && npm install grammy @grammyjs/runner @grammyjs/transformer-throttler
 ```
 
 **Step 2: Remove old Telegram library**
@@ -1254,7 +1254,7 @@ Run: `cortex squelch 15`
 
 Run:
 ```bash
-cd /home/paschal/claudecluster && npm run build
+cd /home/paschal/cortex && npm run build
 ```
 
 **Step 3: Deploy via rolling update**

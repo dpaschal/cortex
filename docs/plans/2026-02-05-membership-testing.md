@@ -120,7 +120,7 @@ describe('MembershipManager', () => {
 
 **Step 2: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 3 initialization tests PASS
 
 **Step 3: Commit**
@@ -252,7 +252,7 @@ Add after the Initialization describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 8 tests PASS (3 init + 5 join)
 
 **Step 3: Commit**
@@ -337,7 +337,7 @@ Add after Join Cluster describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 12 tests PASS (3 init + 5 join + 4 handle)
 
 **Step 3: Commit**
@@ -417,7 +417,7 @@ Add after Handle Join Request describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 15 tests PASS
 
 **Step 3: Commit**
@@ -569,7 +569,7 @@ Add after Approve Node describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 20 tests PASS
 
 **Step 3: Commit**
@@ -693,7 +693,7 @@ Add after Heartbeat describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 24 tests PASS
 
 **Step 3: Commit**
@@ -792,7 +792,7 @@ Add after Failure Detection describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 27 tests PASS
 
 **Step 3: Commit**
@@ -979,7 +979,7 @@ Add after Node Removal describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 34 tests PASS
 
 **Step 3: Commit**
@@ -995,12 +995,12 @@ git commit -m "test(membership): add Raft entry handling tests"
 
 **Step 1: Run all membership tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/membership-manager.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/membership-manager.test.ts`
 Expected: All 34 tests PASS
 
 **Step 2: Run full test suite to ensure no regressions**
 
-Run: `cd /home/paschal/claudecluster && npm test`
+Run: `cd /home/paschal/cortex && npm test`
 Expected: All tests PASS (raft.test.ts, membership.test.ts, membership-manager.test.ts, scheduler.test.ts)
 
 **Step 3: Final commit**

@@ -506,7 +506,7 @@ export function registerCliCommands(program: Command): void {
     .option('--squelch <minutes>', 'Alert squelch duration', '10')
     .option('--pause <seconds>', 'Pause between restarts', '15')
     .option('--dist <path>', 'Local dist directory', process.cwd() + '/dist')
-    .option('--remote-dist <path>', 'Remote dist directory', '/home/paschal/claudecluster/dist')
+    .option('--remote-dist <path>', 'Remote dist directory', '/home/paschal/cortex/dist')
     .option('--user <user>', 'SSH user for remote nodes', 'paschal')
     .action(async (opts) => {
       const { execSync } = await import('child_process');

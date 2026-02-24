@@ -197,7 +197,7 @@ function createUpdater(overrides: {
     clientPool: mockClientPool,
     logger: mockLogger,
     selfNodeId,
-    distDir: '/home/paschal/claudecluster/dist',
+    distDir: '/home/paschal/cortex/dist',
     heartbeatIntervalMs: 5000,
   });
 

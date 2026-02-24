@@ -3,6 +3,6 @@ Description=Refresh Cortex public replica for Litestream
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/paschal/claudecluster
+WorkingDirectory=/home/paschal/cortex
 ExecStart=/usr/bin/npx tsx scripts/create-public-replica.ts
 User=paschal

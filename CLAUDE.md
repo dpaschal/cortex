@@ -112,7 +112,7 @@ Services on anvil: cortex node, PostgreSQL (cerebrus DB), Syncthing, KeePass vau
 
 **Priority:** Low
 
-Backup main stuff from terminus (dotfiles, claudecluster repo, cortex config, SSH keys), then re-image it with CachyOS.
+Backup main stuff from terminus (dotfiles, cortex repo, cortex config, SSH keys), then re-image it with CachyOS.
 
 ---
 

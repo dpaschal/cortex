@@ -135,14 +135,14 @@ export async function runDiag(opts: DiagOpts): Promise<void> {
 
       // Cortex config
       step('config');
-      const configCmd = 'cat /home/paschal/claudecluster/config/default.yaml 2>/dev/null || echo "no config"';
+      const configCmd = 'cat /home/paschal/cortex/config/default.yaml 2>/dev/null || echo "no config"';
       const config = node.isLocal ? runCmd(configCmd) : sshCmd(node.ip, opts.user, configCmd);
       fs.writeFileSync(path.join(nodeDir, 'config.yaml'), config);
       done();
 
       // Version
       step('version');
-      const versionCmd = 'cat /home/paschal/claudecluster/dist/version.json 2>/dev/null || echo "{}"';
+      const versionCmd = 'cat /home/paschal/cortex/dist/version.json 2>/dev/null || echo "{}"';
       const version = node.isLocal ? runCmd(versionCmd) : sshCmd(node.ip, opts.user, versionCmd);
       fs.writeFileSync(path.join(nodeDir, 'version.json'), version);
       done();

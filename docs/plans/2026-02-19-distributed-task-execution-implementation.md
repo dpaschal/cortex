@@ -106,7 +106,7 @@ message WorkflowStatus {
 
 **Step 4: Build to verify proto compiles**
 
-Run: `cd /home/paschal/claudecluster && npm run build`
+Run: `cd /home/paschal/cortex && npm run build`
 Expected: Clean build, no errors
 
 **Step 5: Commit**
@@ -324,7 +324,7 @@ describe('Task Engine Types', () => {
 
 **Step 3: Run test**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/types.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/types.test.ts`
 Expected: 2 tests PASS
 
 **Step 4: Commit**
@@ -408,7 +408,7 @@ describe('Task Engine Migrations', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/migrations.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/migrations.test.ts`
 Expected: FAIL — module not found
 
 **Step 3: Write the migration module**
@@ -480,7 +480,7 @@ export function runMigrations(db: Database.Database): void {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/migrations.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/migrations.test.ts`
 Expected: 4 tests PASS
 
 **Step 5: Commit**
@@ -663,7 +663,7 @@ describe('TaskStateMachine', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/state-machine.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/state-machine.test.ts`
 Expected: FAIL — module not found
 
 **Step 3: Implement the state machine**
@@ -900,7 +900,7 @@ export class TaskStateMachine {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/state-machine.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/state-machine.test.ts`
 Expected: All tests PASS
 
 **Step 5: Commit**
@@ -1051,7 +1051,7 @@ describe('ResourceAwareScheduler', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/scheduler.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/scheduler.test.ts`
 Expected: FAIL — module not found
 
 **Step 3: Implement the scheduler**
@@ -1182,7 +1182,7 @@ export class ResourceAwareScheduler {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/scheduler.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/scheduler.test.ts`
 Expected: 6 tests PASS
 
 **Step 5: Commit**
@@ -1267,7 +1267,7 @@ describe('Condition Evaluator', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/condition-eval.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/condition-eval.test.ts`
 Expected: FAIL — module not found
 
 **Step 3: Implement the evaluator**
@@ -1312,7 +1312,7 @@ export function evaluateCondition(
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/condition-eval.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/condition-eval.test.ts`
 Expected: All tests PASS
 
 **Step 5: Commit**
@@ -1446,7 +1446,7 @@ describe('TaskEnginePlugin', () => {
 
 **Step 2: Run test to verify it fails**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/index.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/index.test.ts`
 Expected: FAIL — module not found
 
 **Step 3: Implement the plugin**
@@ -1951,7 +1951,7 @@ export class TaskEnginePlugin implements Plugin {
 
 **Step 4: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/plugins/task-engine/index.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/plugins/task-engine/index.test.ts`
 Expected: All tests PASS
 
 **Step 5: Commit**
@@ -1994,7 +1994,7 @@ In `src/plugins/cluster-tools/index.ts`, filter out the task tools that are now 
 
 **Step 4: Build and test**
 
-Run: `cd /home/paschal/claudecluster && npm run build && npx vitest run`
+Run: `cd /home/paschal/cortex && npm run build && npx vitest run`
 Expected: Clean build, all tests pass (existing + new)
 
 **Step 5: Commit**
@@ -2111,7 +2111,7 @@ Keep old scheduler code for backward compat but skip its initialization when the
 Deploy the new build to all 6 nodes using the existing ISSU rolling update:
 
 ```bash
-cd /home/paschal/claudecluster
+cd /home/paschal/cortex
 npm run build
 # Use the initiate_rolling_update MCP tool or:
 npm run deploy

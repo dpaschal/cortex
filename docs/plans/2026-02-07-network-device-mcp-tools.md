@@ -192,7 +192,7 @@ describe('NetworkDB', () => {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/network-db.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/network-db.test.ts`
 Expected: FAIL — `Cannot find module '../src/mcp/network-db.js'`
 
 **Step 3: Write the implementation**
@@ -344,7 +344,7 @@ export class NetworkDB {
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/network-db.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/network-db.test.ts`
 Expected: All 7 tests PASS
 
 **Step 5: Commit**
@@ -511,7 +511,7 @@ describe('createNetworkTools', () => {
 
 **Step 2: Run tests to verify they fail**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/network-tools.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/network-tools.test.ts`
 Expected: FAIL — `Cannot find module '../src/mcp/network-tools.js'`
 
 **Step 3: Write the implementation**
@@ -660,7 +660,7 @@ export function createNetworkTools(config: NetworkToolsConfig): { tools: Map<str
 
 **Step 4: Run tests to verify they pass**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run tests/network-tools.test.ts`
+Run: `cd /home/paschal/cortex && npx vitest run tests/network-tools.test.ts`
 Expected: All 9 tests PASS
 
 **Step 5: Commit**
@@ -720,7 +720,7 @@ if (this.networkDb) {
 
 **Step 4: Build to verify compilation**
 
-Run: `cd /home/paschal/claudecluster && npm run build`
+Run: `cd /home/paschal/cortex && npm run build`
 Expected: Compiles with no errors
 
 **Step 5: Commit**
@@ -757,7 +757,7 @@ Expected: All three queries return correct results.
 
 **Step 2: Run the full test suite**
 
-Run: `cd /home/paschal/claudecluster && npx vitest run`
+Run: `cd /home/paschal/cortex && npx vitest run`
 Expected: All tests pass including the new network-db and network-tools tests.
 
 **Step 3: Commit (if any fixes needed)**

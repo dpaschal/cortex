@@ -120,7 +120,7 @@ describe('RaftNode', () => {
 
 **Step 2: Run test to verify it passes**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All 5 initialization tests PASS
 
 **Step 3: Commit**
@@ -244,7 +244,7 @@ Add after the Initialization describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All state transition tests PASS
 
 **Step 3: Commit**
@@ -412,7 +412,7 @@ Add after State Transitions describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All RequestVote tests PASS
 
 **Step 3: Commit**
@@ -610,7 +610,7 @@ Add after RequestVote describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All AppendEntries tests PASS
 
 **Step 3: Commit**
@@ -694,7 +694,7 @@ Add after AppendEntries describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All peer management tests PASS
 
 **Step 3: Commit**
@@ -777,7 +777,7 @@ Add after Peer Management describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All leader election tests PASS
 
 **Step 3: Commit**
@@ -855,7 +855,7 @@ Add after Leader Election describe block:
 
 **Step 2: Run tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts`
 Expected: All log replication tests PASS
 
 **Step 3: Commit**
@@ -871,12 +871,12 @@ git commit -m "test(raft): add log replication tests"
 
 **Step 1: Run all Raft tests**
 
-Run: `cd /home/paschal/claudecluster && npm test -- tests/raft.test.ts --coverage`
+Run: `cd /home/paschal/cortex && npm test -- tests/raft.test.ts --coverage`
 Expected: All tests PASS, coverage report generated
 
 **Step 2: Run full test suite to ensure no regressions**
 
-Run: `cd /home/paschal/claudecluster && npm test`
+Run: `cd /home/paschal/cortex && npm test`
 Expected: All tests PASS (raft.test.ts, membership.test.ts, scheduler.test.ts)
 
 **Step 3: Final commit**

@@ -29,7 +29,7 @@ Before touching any node:
 For each follower node:
 
 1. **Backup** — `executeTask()` on follower: `mv dist dist.bak`
-2. **Rsync** — `executeTask()` on follower: `rsync -az leader_ip:/home/paschal/claudecluster/dist/ /home/paschal/claudecluster/dist/`
+2. **Rsync** — `executeTask()` on follower: `rsync -az leader_ip:/home/paschal/cortex/dist/ /home/paschal/cortex/dist/`
 3. **Verify** — `executeTask()` on follower: `cat dist/version.json` — confirm matches intended build
 
 ---
