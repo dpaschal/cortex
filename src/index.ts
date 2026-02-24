@@ -323,6 +323,11 @@ export class Cortex extends EventEmitter {
       // Initialize plugins (replaces k8s, messaging, skills)
       await this.initializePlugins();
 
+      // Wire up version-aware rejoin — must be before joinOrCreateCluster()
+      this.membership!.on('versionCheck', async ({ leaderBuildHash, leaderAddress }: { leaderBuildHash: string; leaderAddress: string }) => {
+        await this.handleVersionCheck(leaderBuildHash, leaderAddress);
+      });
+
       if (this.mcpMode) {
         // In MCP mode, start serving immediately — cluster joins in background
         await this.initializeMcp();
@@ -796,6 +801,51 @@ export class Cortex extends EventEmitter {
       this.raft.resumeElections();
     } finally {
       this.membership.setRejoinInProgress(false);
+    }
+  }
+
+  /**
+   * Compare local build hash against leader's and auto-update if different.
+   * Triggered after a successful cluster join (initial or rejoin).
+   */
+  private async handleVersionCheck(leaderBuildHash: string, leaderAddress: string): Promise<void> {
+    const fsSync = require('fs');
+
+    // Read local version
+    let localHash = '';
+    try {
+      const versionPath = path.join(__dirname, 'version.json');
+      const versionData = JSON.parse(fsSync.readFileSync(versionPath, 'utf-8'));
+      localHash = versionData.buildHash ?? '';
+    } catch {
+      this.logger.warn('Could not read local version.json');
+    }
+
+    if (!localHash || localHash === leaderBuildHash) {
+      this.logger.info('Version matches leader', { localHash, leaderBuildHash });
+      return;
+    }
+
+    this.logger.warn('Version mismatch detected — auto-updating from leader', {
+      local: localHash,
+      leader: leaderBuildHash,
+    });
+
+    const leaderIp = leaderAddress.split(':')[0];
+    const distDir = __dirname;  // __dirname is dist/ when running compiled code
+
+    try {
+      const { execSync } = require('child_process');
+      execSync(`rsync -az --delete ${leaderIp}:${distDir}/ ${distDir}/`, {
+        timeout: 60000,
+        stdio: 'pipe',
+      });
+
+      this.logger.info('Auto-update complete, restarting cortex...');
+      execSync('systemctl restart cortex', { timeout: 10000, stdio: 'pipe' });
+    } catch (error) {
+      this.logger.error('Auto-update failed', { error });
+      // Don't crash — continue running with old code, manual intervention needed
     }
   }
 

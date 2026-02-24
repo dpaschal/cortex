@@ -245,6 +245,15 @@ export class MembershipManager extends EventEmitter {
         });
 
         this.emit('joined', response.cluster_id);
+
+        // Check for version mismatch after successful join
+        if (response.build_hash) {
+          this.emit('versionCheck', {
+            leaderBuildHash: response.build_hash,
+            leaderAddress: response.leader_address,
+          });
+        }
+
         return true;
       }
 

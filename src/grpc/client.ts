@@ -390,6 +390,7 @@ interface RegisterNodeResponse {
   cluster_id: string;
   leader_address: string;
   peers: NodeInfo[];
+  build_hash?: string;
 }
 
 interface DeregisterNodeRequest {

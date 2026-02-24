@@ -28,6 +28,16 @@ export interface ServiceHandlersConfig {
 export function createClusterServiceHandlers(config: ServiceHandlersConfig): grpc.UntypedServiceImplementation {
   const { logger, membership, raft, scheduler, stateManager } = config;
 
+  // Load local build hash for version-aware rejoin
+  let localBuildHash = '';
+  try {
+    const versionPath = path.join(__dirname, 'version.json');
+    const versionData = JSON.parse(fs.readFileSync(versionPath, 'utf-8'));
+    localBuildHash = versionData.buildHash ?? '';
+  } catch {
+    logger.warn('Could not read version.json — build_hash will be empty');
+  }
+
   return {
     // Node registration
     RegisterNode: async (
@@ -72,6 +82,7 @@ export function createClusterServiceHandlers(config: ServiceHandlersConfig): grp
             joined_at: p.joinedAt.toString(),
             last_seen: p.lastSeen.toString(),
           })),
+          build_hash: localBuildHash,
         });
       } catch (error) {
         logger.error('RegisterNode failed', { error });

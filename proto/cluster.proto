@@ -119,6 +119,7 @@ message RegisterNodeResponse {
   string cluster_id = 3;
   string leader_address = 4;
   repeated NodeInfo peers = 5;
+  string build_hash = 6;  // Leader's current build hash from dist/version.json
 }
 
 message DeregisterNodeRequest {
